@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <sstream>
 #include <algorithm>
 #include <vector>
 #include <map>
@@ -16,9 +17,8 @@ void Assembler::reportErrorAndExit(Assembler::ErrorCode code)
     exit(code + 1);
 }
 
-void Assembler::checkProgramArgs(int argc, char *argv[])
+void Assembler::assertCorrectProgramCall(int argc, char *argv[])
 {
-    // check if program is called correctly
     // usage: asembler [-o <output_file_name>] <input_file_name.s>
     if (argc != 2 && argc != 4)
     {
@@ -45,7 +45,8 @@ void Assembler::checkProgramArgs(int argc, char *argv[])
 
 void Assembler::reportWarning(int lineNumber, Assembler::WarningCode code)
 {
-    std::cerr << Assembler::WarningMessages[code] << std::endl;
+    std::cerr << "Error @ line " << lineNumber << " with message: " << std::endl;
+    std::cerr << '\t' << Assembler::WarningMessages[code] << std::endl;
 }
 
 void Assembler::reportErrorAtLineAndThrow(int lineNumber, Assembler::ErrorCode code)
@@ -75,9 +76,8 @@ void Assembler::trimLine(std::string &line)
     line = line.erase(line.find_last_not_of(whitespace) + 1);
 }
 
-void Assembler::tokenizeLine(std::string &line, int lineNumber, std::vector<std::string> &tokenContainer)
+void Assembler::tokenizeLine(std::string &line, int lineNumber, Assembler::token_container_t &tokenContainer)
 {
-    // break line into usable tokens for source code parsing
     const char *const delimeters = " ,\t\n\r\f\v";
     size_t currIndex, nextIndex = -1;
 
@@ -91,7 +91,6 @@ void Assembler::tokenizeLine(std::string &line, int lineNumber, std::vector<std:
         }
         nextIndex -= 1;
 
-        // copy substring as a token and store into vector container
         currIndex = nextIndex + 1;
         nextIndex = line.find_first_of(delimeters, currIndex);
         tokenContainer.push_back(line.substr(currIndex, nextIndex - currIndex));
@@ -118,13 +117,23 @@ void Assembler::tokenizeLine(std::string &line, int lineNumber, std::vector<std:
     }
     for (int j = tokenContainer.size() - 1; j >= plusSignIndex && offsetAddrMode; j--)
     {
-        // remove merged tokens
         tokenContainer.pop_back();
     }
 }
 
+bool Assembler::isLabelDeclaredAt(Assembler::token_container_t &tokens, int tokenIndex)
+{
+    if (tokenIndex >= tokens.size())
+    {
+        return false;
+    }
+
+    Assembler::token_t t = tokens.at(tokenIndex);
+    return t[t.length() - 1] == ASM::ReservedSymbols[ASM::Symbol::COLON];
+}
+
 /* parse tokens */
-void Assembler::tokenToLowerCase(std::string &token)
+void Assembler::tokenToLowerCase(Assembler::token_t &token)
 {
     std::transform(
         token.begin(),
@@ -135,9 +144,8 @@ void Assembler::tokenToLowerCase(std::string &token)
     );
 }
 
-ASM::Instr Assembler::isValidInstruction(std::string &token)
+ASM::Instr Assembler::isValidInstruction(Assembler::token_t &token)
 {
-    // if valid instruction, return its ID, otherwise return an INVALID_INSTR ID
     bool instrFound = false;
     int instrID = 0;
 
@@ -157,11 +165,11 @@ ASM::Instr Assembler::isValidInstruction(std::string &token)
     return instruction;
 }
 
-bool Assembler::isValidRegisterReference(std::string &token)
+bool Assembler::isValidRegisterReference(Assembler::token_t &token)
 {
     bool regFound = false;
 
-    for (const std::string &reg : ASM::Register)
+    for (const auto &reg : ASM::Register)
     {
         if (token == reg)
         {
@@ -173,9 +181,8 @@ bool Assembler::isValidRegisterReference(std::string &token)
     return regFound;
 }
 
-bool Assembler::isIndirectRegisterAddrReference(std::string &token)
+bool Assembler::isIndirectRegisterAddrReference(Assembler::token_t &token)
 {
-    // check if token holds an indirect registry addressing mode operand
     int bracketStart, bracketEnd;
 
     bracketStart = token.find_first_of(ASM::ReservedSymbols[ASM::Symbol::BRACKET_OPEN]);
@@ -186,18 +193,17 @@ bool Assembler::isIndirectRegisterAddrReference(std::string &token)
         return false;
     }
 
-    std::string reg = token.substr(bracketStart + 1, bracketEnd - bracketStart - 1);
+    Assembler::token_t reg = token.substr(bracketStart + 1, bracketEnd - bracketStart - 1);
     return isValidRegisterReference(reg);
 }
 
-ASM::Directive Assembler::isValidDirective(std::string &token)
+ASM::Directive Assembler::assertValidDirective(Assembler::token_t &token, int lineNumber)
 {
-    // fetch appropriate directive ID or return invalid directive ID
     bool directiveFound = false;
     int directiveID = 0;
 
     Assembler::tokenToLowerCase(token);
-    for (const std::string &directive : ASM::Directives)
+    for (const auto &directive : ASM::Directives)
     {
         if (token == directive)
         {
@@ -210,20 +216,26 @@ ASM::Directive Assembler::isValidDirective(std::string &token)
     ASM::Directive directive = static_cast<ASM::Directive>((directiveFound)
                                                                ? directiveID
                                                                : ASM::Directive::INVALID_DIRECTIVE);
+
+    if (directive == ASM::Directive::INVALID_DIRECTIVE)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::UNKNOWN_DIRECTIVE);
+    }
+
     return directive;
 }
 
-bool Assembler::isValidSymbolName(std::string &token)
+bool Assembler::isValidSymbolName(Assembler::token_t &token)
 {
     const std::regex identTemplate("[a-zA-Z_][a-zA-Z0-9_]*");
 
     return std::regex_match(token, identTemplate);
 }
 
-ASM::word_t Assembler::assertParseLiteral(std::string &token, int lineNumber)
+ASM::word_t Assembler::assertParseLiteral(Assembler::token_t &token, int lineNumber)
 {
-    // check if token holds a valid 16 bit literal in various formats
-    // the function will return the 16 bit representation of the literal or an invalid literal value
+    // return the bit representation of the literal inside the token or throw exception on any non-valid literal
+
     std::regex number("(-)*[1-9][0-9]*"), binary("0[bB][0-1]+"), oct("0[0-7]+"),
         hex("0[xX][0-9a-fA-F]+"), character("\'[\x21-\x7E]\'");
     ASM::word_t value;
@@ -235,7 +247,7 @@ ASM::word_t Assembler::assertParseLiteral(std::string &token, int lineNumber)
     else if (std::regex_match(token, number))
     {
         value = std::stoi(token);
-        if (value >= 2 << ASM::MAX_DATA_WIDTH || value < (~(2 << ASM::MAX_DATA_WIDTH) + 1))
+        if (value >= 2 << ASM::MAX_DATA_WIDTH || value < (-(2 << ASM::MAX_DATA_WIDTH)))
         {
             Assembler::reportWarning(lineNumber, Assembler::WarningCode::TRUNCATE);
         }
@@ -244,31 +256,30 @@ ASM::word_t Assembler::assertParseLiteral(std::string &token, int lineNumber)
     {
         if (token.length() - 2 > ASM::MAX_DATA_WIDTH)
         {
-            // more than 16 bits after 0b / 0B results in the value being truncated
             Assembler::reportWarning(lineNumber, Assembler::WarningCode::TRUNCATE);
         }
 
         value = 0;
         ASM::word_t j = 0;
-        for (int i = token.length() - 1; token[i] != 'b' || token[i] != 'B'; i--)
+        for (int i = token.length() - 1; token[i] != 'b' && token[i] != 'B'; i--, j++)
         {
-            value += (token[i] - '0') * (1 << j++);
             if (j >= ASM::MAX_DATA_WIDTH)
             {
                 break;
             }
+
+            value |= ((token[i] - '0') << j);
         }
     }
     else if (std::regex_match(token, oct))
     {
         if (token.length() - 1 >= ASM::MAX_DATA_WIDTH / 3)
         {
-            // more than 5 octal numbers after 0 results in the value being truncated
             Assembler::reportWarning(lineNumber, Assembler::WarningCode::TRUNCATE);
         }
 
         value = 0;
-        ASM::word_t aux, j = 0;
+        ASM::word_t j = 0;
         for (int i = token.length() - 1; i > 0; i--, j++)
         {
             if (j > ASM::MAX_DATA_WIDTH / 3)
@@ -276,18 +287,13 @@ ASM::word_t Assembler::assertParseLiteral(std::string &token, int lineNumber)
                 break;
             }
 
-            for (int k = 0, aux = 1; k < j; k++)
-            {
-                aux *= 8;
-            }
-            value += (token[i] - '0') * aux;
+            value |= (token[i] - '0') << (3 * j);
         }
     }
     else if (std::regex_match(token, hex))
     {
-        if (token.length() - 2 >= ASM::MAX_DATA_WIDTH / 4)
+        if (token.length() - 2 > ASM::MAX_DATA_WIDTH / 4)
         {
-            // more than 4 hex numbers after 0x / 0X results in the value being truncated
             Assembler::reportWarning(lineNumber, Assembler::WarningCode::TRUNCATE);
         }
 
@@ -295,27 +301,22 @@ ASM::word_t Assembler::assertParseLiteral(std::string &token, int lineNumber)
         ASM::word_t aux, j = 0;
         for (int i = token.length() - 1; i > 1; i--, j++)
         {
-            if (j > ASM::MAX_DATA_WIDTH / 4)
+            if (j >= ASM::MAX_DATA_WIDTH / 4)
             {
                 break;
             }
 
-            for (int k = 0, aux = 1; k < j; k++)
-            {
-                aux *= 16;
-            }
-
             if (token[i] - '0' < 10)
             {
-                value += (token[i] - '0') * aux;
+                value |= (token[i] - '0') << (4 * j);
             }
             else if (token[i] - 'a' < 6)
             {
-                value += (token[i] - 'a' + 10) * aux;
+                value |= ((token[i] - 'a') + 10) << (4 * j);
             }
             else
             {
-                value += (token[i] - 'A' + 10) * aux;
+                value |= ((token[i] - 'A') + 10) << (4 * j);
             }
         }
     }
@@ -327,17 +328,94 @@ ASM::word_t Assembler::assertParseLiteral(std::string &token, int lineNumber)
     return value;
 }
 
-std::string Assembler::encodeDecToHex(ASM::word_t literal)
+bool Assembler::isSectionDeclaration(Assembler::token_t &token)
 {
-    // encodes literal into a string of hex code values
-    std::string result;
+    return token[0] == ASM::ReservedSymbols[ASM::Symbol::DOT];
+}
+
+/* assembler semantic operations */
+void Assembler::assertValidLabelDeclarationOn(int lineNumber, Assembler::token_t &token, Assembler::section_name_t &section)
+{
+    if (!Assembler::isValidSymbolName(token))
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
+    }
+    else if (section == Assembler::Section::NO_SECTION)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::NO_SECTION);
+    }
+}
+
+ASM::Instr Assembler::assertValidInstruction(token_t &token, int lineNumber)
+{
+    ASM::Instr instrID = Assembler::isValidInstruction(token);
+
+    if (instrID == ASM::Instr::INVALID_INSTR)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::UNKNOWN_INSTRUCTION);
+    }
+
+    return instrID;
+}
+
+void Assembler::assertValidInstructionCall(ASM::Instr instr, Assembler::section_name_t &section, int operandCount, int lineNumber)
+{
+    if (section == Assembler::Section::NO_SECTION)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::NO_SECTION);
+    }
+
+    ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
+
+    if (operandCount != instrDesc.operandCount)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::UNSUPPORTED_OPERANDS);
+    }
+}
+
+int Assembler::getInstructionSize(ASM::Instr instr, Assembler::token_container_t &tokens)
+{
+    ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
+    Assembler::token_t lastOperand;
+    int instrSize;
+
+    if (!instrDesc.allowOtherAddrModes)
+    {
+        instrSize = instrDesc.size;
+    }
+    else
+    {
+        lastOperand = tokens[tokens.size() - 1];
+        instrSize = (Assembler::isValidRegisterReference(lastOperand) ||
+                     Assembler::isIndirectRegisterAddrReference(lastOperand))
+                        ? instrDesc.size
+                        : instrDesc.altSize;
+    }
+
+    return instrSize;
+}
+
+bool Assembler::remainingTokenCountMatches(Assembler::token_container_t &tokens, int targetCount, int countFrom)
+{
+    return tokens.size() - countFrom == targetCount;
+}
+
+int Assembler::setLabelOffsetFlag(Assembler::token_container_t &tokens)
+{
+    return Assembler::isLabelDeclaredAt(tokens, 0);
+}
+
+std::string Assembler::encodeLiteralToBytecode(ASM::word_t literal)
+{
+    // formatting is little endian
+
+    std::string result, bytecode;
     ASM::word_t aux, mask = 0x000F;
     char hexChar;
 
-    for (int i = 0; i < ASM::MAX_DATA_WIDTH / 4; i++)
+    for (int i = ASM::MAX_DATA_WIDTH / 4 - 1; i >= 0; i--)
     {
-        aux = literal & (mask << (4 * i));
-        aux >>= (4 * i);
+        aux = (literal >> (4 * i)) & mask;
 
         switch (aux)
         {
@@ -394,16 +472,97 @@ std::string Assembler::encodeDecToHex(ASM::word_t literal)
             break;
         }
 
-        result.push_back(hexChar);
+        bytecode.push_back(hexChar);
     }
+
+    result = bytecode.substr(2, 2);
+    result.push_back(' ');
+    result += bytecode.substr(0, 2);
 
     return result;
 }
 
+void Assembler::assertValidSectionDeclaration(Assembler::token_container_t &tokens, int labelOffset, int lineNumber)
+{
+    if (tokens.size() > 1 + labelOffset)
+    {
+        if (!Assembler::isValidSymbolName(tokens[labelOffset + 1]))
+        {
+            Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
+        }
+    }
+    else
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
+    }
+}
+
+int Assembler::calculateWordDirectiveOffset(Assembler::token_container_t &tokens, int labelOffset, int lineNumber)
+{
+    int offset = 0;
+
+    for (int i = labelOffset + 1; i < tokens.size(); i++)
+    {
+        if (Assembler::isValidSymbolName(tokens.at(i)))
+        {
+            offset += ASM::InstrSize::WORD;
+        }
+        else
+        {
+            try
+            {
+                Assembler::assertParseLiteral(tokens.at(i), lineNumber);
+                offset += ASM::InstrSize::WORD;
+            }
+            catch (Assembler::ErrorCode code)
+            {
+                Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_INITIALIZER);
+            }
+        }
+    }
+
+    return offset;
+}
+
+void Assembler::assertSkipDirectiveOperandDeclared(Assembler::token_container_t &tokens, int labelOffset, int lineNumber)
+{
+    if (tokens.size() - labelOffset < 2)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_LITERAL);
+    }
+}
+
+void Assembler::assertEquDirectiveCorrectOperandCount(Assembler::token_container_t &tokens, int labelOffset, int lineNumber)
+{
+    if (tokens.size() > 2 + labelOffset)
+    {
+        if (!Assembler::isValidSymbolName(tokens[labelOffset + 1]))
+        {
+            Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
+        }
+    }
+    else if (tokens.size() - labelOffset == 2)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_LITERAL);
+    }
+    else if (tokens.size() - labelOffset == 1)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
+    }
+}
+
 /* handle internal assembler structures and operations */
+void Assembler::assertInputFileExists(std::ifstream &file)
+{
+    if (!file.is_open())
+    {
+        Assembler::reportErrorAndExit(Assembler::ErrorCode::FILE_NOT_FOUND);
+    }
+}
+
 void Assembler::initializeAssemblerTables()
 {
-    // add absolute section for local literals
+    // an absolute section is generated by default for local named literals
     section_table_pair_t absoluteSection = {
         Assembler::Section::ABSOLUTE,
         {0, std::vector<Assembler::SectionTableRow_t>()} /* */
@@ -422,21 +581,18 @@ void Assembler::createSectionTable(section_name_t &section)
 
 void Assembler::updateSectionLocationCounter(section_name_t &section, int addByteCount)
 {
-    auto sectionTable = *(Assembler::SectionTables.find(section));
+    auto &sectionTable = *(Assembler::SectionTables.find(section));
     sectionTable.second.locationCounter += addByteCount;
 }
 
 void Assembler::initBytesWithZero(section_name_t &section, int byteCount)
 {
-    // adds byteCount number of '00' bytes to specified section
-
-    auto sectionTable = *(Assembler::SectionTables.find(section));
-    std::string bytecode;
+    auto &sectionTable = *(Assembler::SectionTables.find(section));
+    std::string bytecode = "";
 
     for (int i = 0; i < byteCount; i++)
     {
-        bytecode.push_back('0');
-        bytecode.push_back('0');
+        bytecode += "00";
         if (i + 1 < byteCount)
         {
             bytecode.push_back(' ');
@@ -454,8 +610,7 @@ void Assembler::initBytesWithZero(section_name_t &section, int byteCount)
 
 void Assembler::assertSymbolUndeclared(Assembler::symbol_name_t &symbol, int lineNumber)
 {
-    // stop assembling if symbol is already declared
-    if (Assembler::SymbolTable.count(symbol) == 1)
+    if (Assembler::SymbolTable.count(symbol) > 0)
     {
         Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::DUPLICATE_IDENTIFIER);
     }
@@ -463,15 +618,11 @@ void Assembler::assertSymbolUndeclared(Assembler::symbol_name_t &symbol, int lin
 
 void Assembler::insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal, int lineNumber)
 {
-    // function adds declared local symbol to symbol table and absolute section table
-
     Assembler::assertSymbolUndeclared(symbol, lineNumber);
 
-    auto sectionTable = *(Assembler::SectionTables.find(Assembler::Section::ABSOLUTE));
+    auto &sectionTable = *(Assembler::SectionTables.find(Assembler::Section::ABSOLUTE));
     int locCounter = sectionTable.second.locationCounter;
-    std::string bytecode, desc, aux = Assembler::encodeDecToHex(literal);
 
-    // insert new symbol into symbol table
     Assembler::symbol_table_row_pair_t row = {
         symbol,
         {Assembler::Section::ABSOLUTE,
@@ -481,30 +632,22 @@ void Assembler::insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal,
     };
     Assembler::SymbolTable.insert(row);
 
-    // fetch single bytes and order them in little endian format
-    bytecode = aux.substr(2, 2);
-    bytecode.push_back(' ');
-    bytecode += aux.substr(0, 2);
+    std::string desc;
+    std::stringstream converter;
+    converter << "Local named literal " << symbol << " = " << literal;
+    desc = converter.str();
 
-    desc = "Absolute symbol " + symbol + " = ";
-    desc += literal;
-    desc += " ;";
-
-    // add symbol to absolute section
     sectionTable.second.row.push_back(
         {sectionTable.second.locationCounter,
          ASM::InstrSize::WORD,
-         bytecode,
+         Assembler::encodeLiteralToBytecode(literal),
          desc} /* */
     );
-    sectionTable.second.locationCounter += ASM::InstrSize::WORD;
+    Assembler::updateSectionLocationCounter(Assembler::Section::ABSOLUTE, ASM::InstrSize::WORD);
 }
 
 void Assembler::insertSection(Assembler::section_name_t &section, int lineNumber)
 {
-    // function adds declared section into symbol table if not previously declared
-    // a section content table is created for the specified section
-
     Assembler::assertSymbolUndeclared(section, lineNumber);
 
     Assembler::symbol_table_row_pair_t symbolTableRow = {
@@ -518,8 +661,6 @@ void Assembler::insertSection(Assembler::section_name_t &section, int lineNumber
 
 void Assembler::insertLabel(Assembler::symbol_name_t &label, section_name_t &section, int lineNumber)
 {
-    // function adds declared label into the symbol table
-
     Assembler::assertSymbolUndeclared(label, lineNumber);
 
     auto sectionTable = *(Assembler::SectionTables.find(section));
@@ -530,37 +671,40 @@ void Assembler::insertLabel(Assembler::symbol_name_t &label, section_name_t &sec
     Assembler::SymbolTable.insert(symbolTableRow);
 }
 
+int Assembler::prepareForNextLine(Assembler::token_container_t &tokens, int lineCounter)
+{
+    tokens.clear();
+    return ++lineCounter;
+}
+
+void Assembler::storeTokens(lines_t &program, token_container_t &tokens, int lineNumber)
+{
+    program.push_back({tokens, lineNumber});
+}
+
 int main(int argc, char *argv[])
 {
-    Assembler::checkProgramArgs(argc, argv);
+    Assembler::assertCorrectProgramCall(argc, argv);
 
-    /* refrences to input/output files */
+    /* refrences to resource files */
     std::string inputFilePath((argc == 2) ? argv[1] : argv[3]);
     std::string outputFilePath((argc == 4) ? argv[2] : "");
     std::ifstream sourceProgram(inputFilePath);
 
     /* parsing lines from source file */
-    int lineCounter = 0, asmConstructStart = 0;
+    int lineCounter = 1, labelOffset = 0;
     std::string programLine;
-    std::string token;
-    char tokenStart, tokenEnd;
-    std::vector<std::string> tokens;
-    Assembler::Line_t Line;
-    std::vector<Assembler::Line_t> Program;
+    Assembler::token_t token;
+    Assembler::token_container_t tokens;
+    Assembler::lines_t Program;
 
     /* parsing assembly semantics */
-    int addByteCount;
-    ASM::word_t literalDecimalValue;
-    ASM::InstrDescTable_t instrDesc;
-    std::string operand;
-    std::string currentSection = Assembler::Section::NO_SECTION;
+    int addByteCount, operandCount;
+    ASM::word_t literalBits;
+    Assembler::section_name_t currentSection = Assembler::Section::NO_SECTION;
     Assembler::symbol_table_row_pair_t symbolTableRow;
 
-    if (!sourceProgram.is_open())
-    {
-        Assembler::reportErrorAndExit(Assembler::ErrorCode::FILE_NOT_FOUND);
-    }
-
+    Assembler::assertInputFileExists(sourceProgram);
     Assembler::initializeAssemblerTables();
 
     /* perform assembler first pass */
@@ -571,68 +715,42 @@ int main(int argc, char *argv[])
             Assembler::removeCommentsFromLine(programLine);
             Assembler::trimLine(programLine);
 
-            if (programLine.empty())
-            {
-                lineCounter++;
-                tokens.clear();
-                continue;
-            }
-            else
+            if (!programLine.empty())
             {
                 Assembler::tokenizeLine(programLine, lineCounter, tokens);
             }
+            else
+            {
+                lineCounter = Assembler::prepareForNextLine(tokens, lineCounter);
+                continue;
+            }
 
-            // store tokens for the second pass of assembling
-            Line.lineNumber = lineCounter;
-            Line.tokens = tokens;
-            Program.push_back(Line);
-
+            Assembler::storeTokens(Program, tokens, lineCounter);
             token = tokens[0];
-            tokenStart = token[0];
-            tokenEnd = token[token.length() - 1];
 
-            // parse when line starts with label
-            if (tokenEnd == ASM::ReservedSymbols[ASM::Symbol::COLON])
+            if (Assembler::isLabelDeclaredAt(tokens, 0))
             {
                 token.erase(token.length() - 1, 1);
 
-                if (!Assembler::isValidSymbolName(token))
-                {
-                    Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::INVALID_IDENTIFIER);
-                }
-                else if (currentSection == Assembler::Section::NO_SECTION)
-                {
-                    Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::NO_SECTION);
-                }
-
+                Assembler::assertValidLabelDeclarationOn(lineCounter, token, currentSection);
                 Assembler::insertLabel(token, currentSection, lineCounter);
 
-                // jump to next line if only a label has been declared in this line
+                // jump to next line when the line only holds a label
                 if (tokens.size() == 1)
                 {
-                    lineCounter++;
-                    tokens.clear();
+                    lineCounter = Assembler::prepareForNextLine(tokens, lineCounter);
                     continue;
                 }
-                else
-                {
-                    // reference tokens corretly based on whether a label is at the start of the line
-                    asmConstructStart = 1;
-                    token = tokens[asmConstructStart];
-                    tokenStart = token[0];
-                    tokenEnd = token[token.length() - 1];
-                }
-            }
-            else
-            {
-                asmConstructStart = 0;
             }
 
+            // reference tokens corretly based on whether a label is at the start of the line
+            labelOffset = Assembler::setLabelOffsetFlag(tokens);
+            token = tokens[labelOffset];
+
             // parse remainder of the line
-            if (tokenStart == ASM::ReservedSymbols[ASM::Symbol::DOT])
+            if (Assembler::isSectionDeclaration(token))
             {
-                // parse token as directive
-                ASM::Directive dir = Assembler::isValidDirective(token);
+                ASM::Directive dir = Assembler::assertValidDirective(token, lineCounter);
 
                 if (dir == ASM::Directive::DOT_END)
                 {
@@ -640,162 +758,56 @@ int main(int argc, char *argv[])
                     break;
                 }
 
-                // parse declared directive
                 switch (dir)
                 {
                 case ASM::Directive::DOT_GLOBAL:
                 case ASM::Directive::DOT_EXTERN:
-                {
                     // skip directives during first pass
                     break;
-                }
 
                 case ASM::Directive::DOT_SECTION:
-                {
-                    if (tokens.size() > 1 + asmConstructStart)
-                    {
-                        if (!Assembler::isValidSymbolName(tokens[asmConstructStart + 1]))
-                        {
-                            Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::INVALID_IDENTIFIER);
-                        }
-                    }
-                    else
-                    {
-                        Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::INVALID_IDENTIFIER);
-                    }
-
-                    currentSection = tokens[asmConstructStart + 1];
+                    Assembler::assertValidSectionDeclaration(tokens, labelOffset, lineCounter);
+                    currentSection = tokens[labelOffset + 1];
                     Assembler::insertSection(currentSection, lineCounter);
-
                     break;
-                }
 
                 case ASM::Directive::DOT_WORD:
-                {
-                    // increase location counter of current section by the number of symbols/literals declared
-                    // leave initialization for the second pass of assembling
-                    addByteCount = 0;
-
-                    for (int i = asmConstructStart + 1; i < tokens.size(); i++)
-                    {
-                        if (Assembler::isValidSymbolName(tokens.at(i)) ||
-                            Assembler::assertParseLiteral(tokens.at(i), lineCounter))
-                        {
-                            addByteCount += ASM::InstrSize::WORD;
-                        }
-                        else
-                        {
-                            Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::INVALID_INITIALIZER);
-                        }
-                    }
-
+                    // only calculate the offset, the initialization in the section table is done in the second pass
+                    addByteCount = Assembler::calculateWordDirectiveOffset(tokens, labelOffset, lineCounter);
                     Assembler::updateSectionLocationCounter(currentSection, addByteCount);
-
                     break;
-                }
 
                 case ASM::Directive::DOT_SKIP:
-                {
-                    if (tokens.size() - asmConstructStart < 2)
-                    {
-                        Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::INVALID_LITERAL);
-                    }
-                    literalDecimalValue = Assembler::assertParseLiteral(tokens[asmConstructStart + 1], lineCounter);
-
-                    Assembler::initBytesWithZero(currentSection, literalDecimalValue);
-
+                    Assembler::assertSkipDirectiveOperandDeclared(tokens, labelOffset, lineCounter);
+                    literalBits = Assembler::assertParseLiteral(tokens[labelOffset + 1], lineCounter);
+                    Assembler::initBytesWithZero(currentSection, literalBits);
                     break;
-                }
 
                 case ASM::Directive::DOT_EQU:
                 {
-                    if (tokens.size() > 2 + asmConstructStart)
-                    {
-                        if (!Assembler::isValidSymbolName(tokens[asmConstructStart + 1]))
-                        {
-                            Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::INVALID_IDENTIFIER);
-                        }
-
-                        literalDecimalValue = Assembler::assertParseLiteral(tokens[asmConstructStart + 2], lineCounter);
-                    }
-                    else if (tokens.size() - asmConstructStart == 2)
-                    {
-                        Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::INVALID_LITERAL);
-                    }
-                    else if (tokens.size() - asmConstructStart == 1)
-                    {
-                        Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::INVALID_IDENTIFIER);
-                    }
-
-                    Assembler::insertAbsoluteSymbol(tokens[asmConstructStart + 1], literalDecimalValue, lineCounter);
-
-                    break;
-                }
-
-                default:
-                {
-                    Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::UNKNOWN_DIRECTIVE);
+                    Assembler::assertEquDirectiveCorrectOperandCount(tokens, labelOffset, lineCounter);
+                    literalBits = Assembler::assertParseLiteral(tokens[labelOffset + 2], lineCounter);
+                    Assembler::insertAbsoluteSymbol(tokens[labelOffset + 1], literalBits, lineCounter);
                     break;
                 }
                 }
             }
-            else if (tokenEnd == ASM::ReservedSymbols[ASM::Symbol::COLON])
+            else if (Assembler::isLabelDeclaredAt(tokens, 1))
             {
                 Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::MULTIPLE_LABELS);
             }
             else
             {
-                // parse token as instruction
-                ASM::Instr instrID = Assembler::isValidInstruction(token);
+                ASM::Instr instrID = Assembler::assertValidInstruction(token, lineCounter);
 
-                if (instrID == ASM::Instr::INVALID_INSTR)
-                {
-                    Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::UNKNOWN_INSTRUCTION);
-                }
+                operandCount = tokens.size() - 1 - labelOffset;
+                Assembler::assertValidInstructionCall(instrID, currentSection, operandCount, lineCounter);
 
-                if (currentSection == Assembler::Section::NO_SECTION)
-                {
-                    Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::NO_SECTION);
-                }
-
-                instrDesc = ASM::InstructionDescTable[instrID];
-
-                if (tokens.size() - 1 - asmConstructStart != instrDesc.operandCount)
-                {
-                    Assembler::reportErrorAtLineAndThrow(lineCounter, Assembler::ErrorCode::UNSUPPORTED_OPERANDS);
-                }
-
-                // check which addressing mode is utilized to fetch correct instruction size
-                if (!instrDesc.allowOtherAddrModes)
-                {
-                    addByteCount = instrDesc.size;
-                }
-                else
-                {
-                    operand = tokens[tokens.size() - 1];
-                    addByteCount = (Assembler::isValidRegisterReference(operand) ||
-                                    Assembler::isIndirectRegisterAddrReference(operand))
-                                       ? instrDesc.size
-                                       : instrDesc.altSize;
-                }
-
+                addByteCount = Assembler::getInstructionSize(instrID, tokens);
                 Assembler::updateSectionLocationCounter(currentSection, addByteCount);
             }
 
-            // DEBUG
-            if (!programLine.empty())
-            {
-                std::cout << programLine << std::endl;
-                /*for (std::string &token : Line.tokens)
-                {
-                    std::cout << "|" << token << "|" << std::endl;
-                }
-                std::cout << std::endl;*/
-            }
-
-            // reset for next iteration
-            tokens.clear();
-            lineCounter++;
+            lineCounter = Assembler::prepareForNextLine(tokens, lineCounter);
         }
     }
     catch (Assembler::ErrorCode code)
@@ -804,19 +816,10 @@ int main(int argc, char *argv[])
         Assembler::reportErrorAndExit(code);
     }
 
-    for (Assembler::Line_t &line : Program)
-    {
-        for (std::string &token : line.tokens)
-        {
-            std::cout << "|" << token << "|, ";
-        }
-        std::cout << std::endl;
-    }
-    std::cout << std::endl;
-
     /* DEBUG */
-    int exit;
-    std::cin >> exit;
+    DebugAssembler::debugTokenization(Program);
+    DebugAssembler::debugSymbolTable();
+    DebugAssembler::debugSectionTables();
 
     return 0;
 }

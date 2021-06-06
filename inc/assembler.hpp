@@ -3,6 +3,8 @@
 #include <vector>
 #include <map>
 #include <limits>
+#include <iostream>
+#include <fstream>
 #define _ASSEMBLER_H_
 
 typedef unsigned char byte_t;
@@ -386,6 +388,10 @@ namespace ASM
 
 namespace Assembler
 {
+    typedef std::string section_name_t;
+    typedef std::string symbol_name_t;
+    typedef std::vector<std::string> token_container_t;
+
     /* 
         Error handling during assembler execution.
     */
@@ -428,7 +434,7 @@ namespace Assembler
         "Warning: Truncating literal to 16 bits." /* */
     };
 
-    void checkProgramArgs(int argc, char *argv[]);                  /* check if user called program incorrectly */
+    void assertCorrectProgramCall(int argc, char *argv[]);          /* check if user called program incorrectly */
     void reportWarning(int lineNumber, WarningCode code);           /* issue warning to user during assembling */
     void reportErrorAndExit(ErrorCode code);                        /* report error message and exit with error code */
     void reportErrorAtLineAndThrow(int lineNumber, ErrorCode code); /* reports at which line in the source file the error occurred and exits */
@@ -443,29 +449,45 @@ namespace Assembler
         int lineNumber;
     } Line_t;
 
-    void removeCommentsFromLine(std::string &line);                                                 /* removes characters after the '#' symbol */
-    void trimLine(std::string &line);                                                               /* removes leading and trailing whitespace in the line */
-    void tokenizeLine(std::string &line, int lineNumber, std::vector<std::string> &tokenContainer); /* splits the current line into tokens */
+    void removeCommentsFromLine(std::string &line);                                     /* removes characters after the '#' symbol */
+    void trimLine(std::string &line);                                                   /* removes leading and trailing whitespace in the line */
+    void tokenizeLine(std::string &line, int lineNumber, token_container_t &container); /* splits the current line into tokens */
+    bool isLabelDeclaredAt(token_container_t &tokens, int tokenIndex);                  /* check if firs token in line is a label token */
 
     /* 
         Parse tokens and literals.
     */
 
-    void tokenToLowerCase(std::string &token);                          /* converts characters in the token to lowercase */
-    ASM::Instr isValidInstruction(std::string &token);                  /* checks if token holds a valid assembly instruction and returns its ID */
-    bool isValidRegisterReference(std::string &token);                  /* checks if token holds a valid reference to CPU register */
-    bool isIndirectRegisterAddrReference(std::string &token);           /* checks if token holds a registry indirect addressing reference */
-    ASM::Directive isValidDirective(std::string &token);                /* checks if token holds a valid directive and returns its id */
-    bool isValidSymbolName(std::string &token);                         /* checks if token holds a valid symbol name */
-    ASM::word_t assertParseLiteral(std::string &token, int lineNumber); /* checks if token holds a valid literal and returns its decimal value */
-    std::string encodeDecToHex(ASM::word_t literal);                    /* encodes given decimal literal into a hex string representation */
+    typedef std::string token_t;
+
+    void tokenToLowerCase(token_t &token);                          /* converts characters in the token to lowercase */
+    ASM::Instr isValidInstruction(token_t &token);                  /* checks if token holds a valid assembly instruction and returns its ID */
+    bool isValidRegisterReference(token_t &token);                  /* checks if token holds a valid reference to CPU register */
+    bool isIndirectRegisterAddrReference(token_t &token);           /* checks if token holds a registry indirect addressing reference */
+    bool isValidSymbolName(token_t &token);                         /* checks if token holds a valid symbol name */
+    ASM::word_t assertParseLiteral(token_t &token, int lineNumber); /* checks if token holds a valid literal and returns its decimal value */
+    bool isSectionDeclaration(token_t &token);                      /* checks if token holds a section directive declaration */
+
+    /* 
+        Assembler semantic operations.
+    */
+
+    bool remainingTokenCountMatches(token_container_t &tokens, int targetCount, int countFrom);                   /* checks if the remaining token count matches the target count starting from the countFrom index */
+    int setLabelOffsetFlag(token_container_t &tokens);                                                            /* asserts which offset should be used depending on the presence of label tokens */
+    std::string encodeLiteralToBytecode(ASM::word_t literal);                                                     /* encodes given decimal literal into a hex string representation */
+    void assertValidLabelDeclarationOn(int lineNumber, token_t &token, section_name_t &section);                  /* asserts that the token contains a valid label, otherwise throws exception */
+    ASM::Instr assertValidInstruction(token_t &token, int lineNumber);                                            /* returns a valid ASM instruction identifier, otherwise throw sexception */
+    void assertValidInstructionCall(ASM::Instr instr, section_name_t &section, int operandCount, int lineNumber); /* asserts if instruction was declared correctly, otherwise throws an exception */
+    int getInstructionSize(ASM::Instr instr, token_container_t &tokens);                                          /* returns the correct byte size of the specified instruction */
+    ASM::Directive assertValidDirective(token_t &token, int lineNumber);                                          /* returns the correct directive ID, otherwise throws an exception */
+    void assertValidSectionDeclaration(token_container_t &tokens, int labelOffset, int lineNumber);               /* asserts that directive is declared correctly, otherwise throws an exception*/
+    int calculateWordDirectiveOffset(token_container_t &tokens, int labelOffset, int lineNumber);                 /* returns the correct offset when the .word directive is used, otherwise throws an exception on invalid initializers */
+    void assertSkipDirectiveOperandDeclared(token_container_t &tokens, int labelOffset, int lineNumber);          /* asserts that a operand for the .skip directive is declared, otherwise throws an exception */
+    void assertEquDirectiveCorrectOperandCount(token_container_t &tokens, int labelOffset, int lineNumber);       /* asserts that the number of operands for the .equ directive is correct, otherwise throws an exception */
 
     /*
         Assembler data structures and internal assembler operations.
     */
-
-    typedef std::string section_name_t;
-    typedef std::string symbol_name_t;
 
     struct Section
     {
@@ -482,8 +504,13 @@ namespace Assembler
         int offset;
         bool isLocal;
         int orderID;
+
+        void printRow()
+        {
+            std::cout << '{' << section << ", " << offset << ", " << (isLocal ? "local" : "global") << ", " << orderID << '}';
+        }
     } SymbolTableRow_t;
-    int Assembler::SymbolTableRow::ORDER_COUNTER = 0;
+    int Assembler::SymbolTableRow::ORDER_COUNTER = 1;
 
     typedef struct SectionTableRow
     {
@@ -491,6 +518,11 @@ namespace Assembler
         int size;
         std::string bytecode;
         std::string description;
+
+        void printRow()
+        {
+            std::cout << '{' << offset << ", " << size << ", " << bytecode << ", " << description << '}';
+        }
     } SectionTableRow_t;
 
     typedef struct SectionTable
@@ -501,10 +533,12 @@ namespace Assembler
 
     typedef std::pair<symbol_name_t, SymbolTableRow_t> symbol_table_row_pair_t;
     typedef std::pair<section_name_t, SectionTable_t> section_table_pair_t;
+    typedef std::vector<Line_t> lines_t;
 
     std::map<symbol_name_t, SymbolTableRow_t> SymbolTable;
     std::map<section_name_t, SectionTable_t> SectionTables;
 
+    void assertInputFileExists(std::ifstream &file);
     void initializeAssemblerTables();                                                      /* inserts default values inside the assembler tables */
     void createSectionTable(section_name_t &section);                                      /* adds new section table */
     void updateSectionLocationCounter(section_name_t &section, int addByteCount);          /* increases section location counter by addByteCount */
@@ -513,7 +547,56 @@ namespace Assembler
     void insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal, int lineNumber); /* inserts symbol with its initial value into the absolute section and returns operation success */
     void insertSection(section_name_t &section, int lineNumber);                           /* insert section name into symbol table */
     void insertLabel(symbol_name_t &label, section_name_t &section, int lineNumber);       /* insert label into symbol table */
+    int prepareForNextLine(token_container_t &tokens, int lineCounter);                    /* clears the tokens and increments the line number counter */
+    void storeTokens(lines_t &program, token_container_t &tokens, int lineNumber);         /* stores tokens in program container */
 
+}
+
+namespace DebugAssembler
+{
+    void debugTokenization(std::vector<Assembler::Line_t> &container)
+    {
+        for (Assembler::Line_t &line : container)
+        {
+            for (std::string &token : line.tokens)
+            {
+                std::cout << "|" << token << "|, ";
+            }
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+    }
+
+    void debugSymbolTable()
+    {
+        std::cout << "Symbol table contents: " << std::endl;
+        std::cout << "{symbol, {section, offset, isLocal, orderId}}" << std::endl
+                  << std::endl;
+        for (auto &row : Assembler::SymbolTable)
+        {
+            std::cout << '{' << row.first << ", ";
+            row.second.printRow();
+            std::cout << '}' << std::endl;
+        }
+        std::cout << std::endl;
+    }
+
+    void debugSectionTables()
+    {
+        std::cout << "Section table content: " << std::endl;
+        std::cout << "{offset, size, bytecode, description}" << std::endl
+                  << std::endl;
+        for (auto &row : Assembler::SectionTables)
+        {
+            std::cout << "Section table: " << row.first << std::endl;
+            for (auto &section : row.second.row)
+            {
+                section.printRow();
+                std::cout << std::endl;
+            }
+            std::cout << std::endl;
+        }
+    }
 }
 
 #endif
