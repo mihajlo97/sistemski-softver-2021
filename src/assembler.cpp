@@ -45,7 +45,7 @@ void Assembler::assertCorrectProgramCall(int argc, char *argv[])
 
 void Assembler::reportWarning(int lineNumber, Assembler::WarningCode code)
 {
-    std::cerr << "Error @ line " << lineNumber << " with message: " << std::endl;
+    std::cerr << "Warning @ line " << lineNumber << " with message: " << std::endl;
     std::cerr << '\t' << Assembler::WarningMessages[code] << std::endl;
 }
 
@@ -54,6 +54,11 @@ void Assembler::reportErrorAtLineAndThrow(int lineNumber, Assembler::ErrorCode c
     std::cerr << "Error detected @ line " << lineNumber << " with the following message:" << std::endl
               << '\t';
     throw code;
+}
+
+void Assembler::willThrowOnToken(Assembler::token_t &token)
+{
+    std::cout << "Exception thrown on token (" << token << ")." << std::endl;
 }
 
 /* parse source code line */
@@ -219,6 +224,7 @@ ASM::Directive Assembler::assertValidDirective(Assembler::token_t &token, int li
 
     if (directive == ASM::Directive::INVALID_DIRECTIVE)
     {
+        Assembler::willThrowOnToken(token);
         Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::UNKNOWN_DIRECTIVE);
     }
 
@@ -322,13 +328,14 @@ ASM::word_t Assembler::assertParseLiteral(Assembler::token_t &token, int lineNum
     }
     else
     {
+        Assembler::willThrowOnToken(token);
         throw Assembler::ErrorCode::INVALID_LITERAL;
     }
 
     return value;
 }
 
-bool Assembler::isSectionDeclaration(Assembler::token_t &token)
+bool Assembler::isDirectiveDeclaration(Assembler::token_t &token)
 {
     return token[0] == ASM::ReservedSymbols[ASM::Symbol::DOT];
 }
@@ -338,6 +345,7 @@ void Assembler::assertValidLabelDeclarationOn(int lineNumber, Assembler::token_t
 {
     if (!Assembler::isValidSymbolName(token))
     {
+        Assembler::willThrowOnToken(token);
         Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
     }
     else if (section == Assembler::Section::NO_SECTION)
@@ -352,6 +360,7 @@ ASM::Instr Assembler::assertValidInstruction(token_t &token, int lineNumber)
 
     if (instrID == ASM::Instr::INVALID_INSTR)
     {
+        Assembler::willThrowOnToken(token);
         Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::UNKNOWN_INSTRUCTION);
     }
 
@@ -488,6 +497,7 @@ void Assembler::assertValidSectionDeclaration(Assembler::token_container_t &toke
     {
         if (!Assembler::isValidSymbolName(tokens[labelOffset + 1]))
         {
+            Assembler::willThrowOnToken(tokens[labelOffset + 1]);
             Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
         }
     }
@@ -538,6 +548,7 @@ void Assembler::assertEquDirectiveCorrectOperandCount(Assembler::token_container
     {
         if (!Assembler::isValidSymbolName(tokens[labelOffset + 1]))
         {
+            Assembler::willThrowOnToken(tokens[labelOffset + 1]);
             Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
         }
     }
@@ -628,8 +639,9 @@ void Assembler::insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal,
         {Assembler::Section::ABSOLUTE,
          locCounter,
          true,
-         Assembler::SymbolTableRow::ORDER_COUNTER++} /* */
+         Assembler::SymbolTableRow::ORDER_COUNTER} /* */
     };
+    Assembler::SymbolTableRow::ORDER_COUNTER++;
     Assembler::SymbolTable.insert(row);
 
     std::string desc;
@@ -652,8 +664,9 @@ void Assembler::insertSection(Assembler::section_name_t &section, int lineNumber
 
     Assembler::symbol_table_row_pair_t symbolTableRow = {
         section,
-        {section, 0, true, Assembler::SymbolTableRow::ORDER_COUNTER++} /* */
+        {section, 0, true, Assembler::SymbolTableRow::ORDER_COUNTER} /* */
     };
+    Assembler::SymbolTableRow::ORDER_COUNTER++;
     Assembler::SymbolTable.insert(symbolTableRow);
 
     Assembler::createSectionTable(section);
@@ -663,11 +676,12 @@ void Assembler::insertLabel(Assembler::symbol_name_t &label, section_name_t &sec
 {
     Assembler::assertSymbolUndeclared(label, lineNumber);
 
-    auto sectionTable = *(Assembler::SectionTables.find(section));
+    auto &sectionTable = *(Assembler::SectionTables.find(section));
     Assembler::symbol_table_row_pair_t symbolTableRow = {
         label,
-        {section, sectionTable.second.locationCounter, true, Assembler::SymbolTableRow::ORDER_COUNTER++} /* */
+        {section, sectionTable.second.locationCounter, true, Assembler::SymbolTableRow::ORDER_COUNTER} /* */
     };
+    Assembler::SymbolTableRow::ORDER_COUNTER++;
     Assembler::SymbolTable.insert(symbolTableRow);
 }
 
@@ -677,9 +691,126 @@ int Assembler::prepareForNextLine(Assembler::token_container_t &tokens, int line
     return ++lineCounter;
 }
 
-void Assembler::storeTokens(lines_t &program, token_container_t &tokens, int lineNumber)
+void Assembler::storeLine(Assembler::lines_t &program, Assembler::token_container_t &tokens, int lineNumber, Assembler::LineTag tag)
 {
-    program.push_back({tokens, lineNumber});
+    Assembler::Line_t line = {tokens, lineNumber, tag};
+    program.push_back(line);
+}
+
+void Assembler::patchLineTag(Assembler::lines_t &program, Assembler::LineTag tag)
+{
+    auto &line = program.at(program.size() - 1);
+    line.tag = tag;
+}
+
+void Assembler::resetSectionLocationCounters()
+{
+    for (auto &table : Assembler::SectionTables)
+    {
+        table.second.locationCounter = 0;
+    }
+}
+
+/* second pass processing */
+void Assembler::processExternDirective(Assembler::token_container_t &tokens, int labelOffset, int lineNumber)
+{
+    for (int i = 1 + labelOffset; i < tokens.size(); i++)
+    {
+        if (!Assembler::isValidSymbolName(tokens[i]))
+        {
+            Assembler::willThrowOnToken(tokens[i]);
+            Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
+        }
+
+        if (SymbolTable.count(tokens[i]) == 1)
+        {
+            Assembler::willThrowOnToken(tokens[i]);
+            Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::REDECLARED_EXTERN);
+        }
+    }
+}
+
+void Assembler::processGlobalDirective(Assembler::token_container_t &tokens, int labelOffset, int lineNumber)
+{
+    for (int i = 1 + labelOffset; i < tokens.size(); i++)
+    {
+        if (!Assembler::isValidSymbolName(tokens[i]))
+        {
+            Assembler::willThrowOnToken(tokens[i]);
+            Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
+        }
+
+        if (SymbolTable.count(tokens[i]) == 0)
+        {
+            Assembler::willThrowOnToken(tokens[i]);
+            Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::UNDECLARED_GLOBAL);
+        }
+
+        auto &row = *(SymbolTable.find(tokens[i]));
+        row.second.isLocal = false;
+    }
+}
+
+void Assembler::processSectionDirective(Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
+{
+    section = tokens[1 + labelOffset];
+}
+
+bool Assembler::endDirectiveDetected(Assembler::token_container_t &tokens, int labelOffset, int lineNumber)
+{
+    ASM::Directive dir = Assembler::assertValidDirective(tokens[labelOffset], lineNumber);
+
+    return dir == ASM::Directive::DOT_END;
+}
+
+void Assembler::assertProgramHasEnd(bool endDirectiveDetected, int lineNumber)
+{
+    if (!endDirectiveDetected)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::NO_END_DIRECTIVE);
+    }
+}
+
+void Assembler::processDirective(Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
+{
+    ASM::Directive dir = Assembler::assertValidDirective(tokens[labelOffset], lineNumber);
+
+    if (dir == ASM::Directive::DOT_END)
+    {
+        // finish second pass on .end directive
+        return;
+    }
+
+    switch (dir)
+    {
+    case ASM::Directive::DOT_EXTERN:
+        Assembler::processExternDirective(tokens, labelOffset, lineNumber);
+        break;
+
+    case ASM::Directive::DOT_GLOBAL:
+        Assembler::processGlobalDirective(tokens, labelOffset, lineNumber);
+        break;
+
+    case ASM::Directive::DOT_SECTION:
+        Assembler::processSectionDirective(tokens, labelOffset, lineNumber, section);
+        break;
+
+    case ASM::Directive::DOT_WORD:
+
+        break;
+
+    case ASM::Directive::DOT_SKIP:
+        // directive already fully processed in the first pass
+        break;
+
+    case ASM::Directive::DOT_EQU:
+        // directive already fully processed in the first pass
+        break;
+    }
+}
+
+void Assembler::processInstruction(token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
+{
 }
 
 int main(int argc, char *argv[])
@@ -725,7 +856,7 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            Assembler::storeTokens(Program, tokens, lineCounter);
+            Assembler::storeLine(Program, tokens, lineCounter, Assembler::LineTag::NONE);
             token = tokens[0];
 
             if (Assembler::isLabelDeclaredAt(tokens, 0))
@@ -738,6 +869,7 @@ int main(int argc, char *argv[])
                 // jump to next line when the line only holds a label
                 if (tokens.size() == 1)
                 {
+                    Assembler::patchLineTag(Program, Assembler::LineTag::LABEL_ONLY_TAG);
                     lineCounter = Assembler::prepareForNextLine(tokens, lineCounter);
                     continue;
                 }
@@ -747,14 +879,18 @@ int main(int argc, char *argv[])
             labelOffset = Assembler::setLabelOffsetFlag(tokens);
             token = tokens[labelOffset];
 
-            // parse remainder of the line
-            if (Assembler::isSectionDeclaration(token))
+            if (Assembler::isDirectiveDeclaration(token))
             {
                 ASM::Directive dir = Assembler::assertValidDirective(token, lineCounter);
+                Assembler::patchLineTag(Program, (labelOffset) ? Assembler::LineTag::LABEL_DIR_TAG : Assembler::LineTag::DIR_TAG);
 
                 if (dir == ASM::Directive::DOT_END)
                 {
                     // skip to the second pass of assembling
+                    while (std::getline(sourceProgram, programLine))
+                    {
+                        lineCounter++;
+                    }
                     break;
                 }
 
@@ -799,9 +935,10 @@ int main(int argc, char *argv[])
             else
             {
                 ASM::Instr instrID = Assembler::assertValidInstruction(token, lineCounter);
-
                 operandCount = tokens.size() - 1 - labelOffset;
                 Assembler::assertValidInstructionCall(instrID, currentSection, operandCount, lineCounter);
+
+                Assembler::patchLineTag(Program, (labelOffset) ? Assembler::LineTag::LABEL_INSTR_TAG : Assembler::LineTag::INSTR_TAG);
 
                 addByteCount = Assembler::getInstructionSize(instrID, tokens);
                 Assembler::updateSectionLocationCounter(currentSection, addByteCount);
@@ -813,6 +950,62 @@ int main(int argc, char *argv[])
     catch (Assembler::ErrorCode code)
     {
         sourceProgram.close();
+        Assembler::reportErrorAndExit(code);
+    }
+
+    sourceProgram.close();
+    Assembler::resetSectionLocationCounters();
+
+    /* perform assembler second pass */
+    try
+    {
+        bool endDirectiveDetected = false;
+        int endDirectiveDeclaredOn = 0;
+        currentSection = Assembler::Section::NO_SECTION;
+
+        for (auto &line : Program)
+        {
+            switch (line.tag)
+            {
+            case Assembler::LineTag::LABEL_ONLY_TAG:
+                // labels have already been processed in the first pass
+                break;
+
+            case Assembler::LineTag::DIR_TAG:
+                Assembler::processDirective(line.tokens, 0, line.lineNumber, currentSection);
+                endDirectiveDetected = Assembler::endDirectiveDetected(line.tokens, 0, line.lineNumber);
+                break;
+
+            case Assembler::LineTag::LABEL_DIR_TAG:
+                Assembler::processDirective(line.tokens, 1, line.lineNumber, currentSection);
+                endDirectiveDetected = Assembler::endDirectiveDetected(line.tokens, 1, line.lineNumber);
+                break;
+
+            case Assembler::LineTag::INSTR_TAG:
+                Assembler::processInstruction(line.tokens, 0, line.lineNumber, currentSection);
+                break;
+
+            case Assembler::LineTag::LABEL_INSTR_TAG:
+                Assembler::processInstruction(line.tokens, 1, line.lineNumber, currentSection);
+                break;
+            }
+
+            if (endDirectiveDetected)
+            {
+                // finish processing on the .end directive
+                endDirectiveDeclaredOn = line.lineNumber;
+                break;
+            }
+        }
+
+        Assembler::assertProgramHasEnd(endDirectiveDetected, lineCounter);
+        if (endDirectiveDeclaredOn < lineCounter)
+        {
+            Assembler::reportWarning(endDirectiveDeclaredOn, Assembler::WarningCode::IGNORE_AFTER_END);
+        }
+    }
+    catch (Assembler::ErrorCode code)
+    {
         Assembler::reportErrorAndExit(code);
     }
 

@@ -1,7 +1,8 @@
 # file interrupts.s
+.extern main
 .section ivt
 	.word isr_reset
-	.skip 2 # isr_error
+isr_error: .skip 2 # isr_error
 	.word isr_timer
 	.word isr_terminal
 	.skip 8
@@ -29,8 +30,10 @@ isr_terminal:
 random:	ldr r0, %myCounter # pcrel
 	ldr r1, $1
 	add r0, r1
-	str r0, myCounter # abs
+also_random: str r0, myCounter # abs
 	pop r1
 	pop r0
 	iret
 .end
+# end of file
+.section none
