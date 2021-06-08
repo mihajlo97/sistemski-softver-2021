@@ -316,13 +316,13 @@ ASM::word_t Assembler::assertParseLiteral(Assembler::token_t &token, int lineNum
             {
                 value |= (token[i] - '0') << (4 * j);
             }
-            else if (token[i] - 'a' < 6)
+            else if (token[i] - 'A' < 6)
             {
-                value |= ((token[i] - 'a') + 10) << (4 * j);
+                value |= ((token[i] - 'A') + 10) << (4 * j);
             }
             else
             {
-                value |= ((token[i] - 'A') + 10) << (4 * j);
+                value |= ((token[i] - 'a') + 10) << (4 * j);
             }
         }
     }
@@ -348,10 +348,8 @@ void Assembler::assertValidLabelDeclarationOn(int lineNumber, Assembler::token_t
         Assembler::willThrowOnToken(token);
         Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_IDENTIFIER);
     }
-    else if (section == Assembler::Section::NO_SECTION)
-    {
-        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::NO_SECTION);
-    }
+
+    Assembler::assertSectionPreviouslyDeclared(section, lineNumber);
 }
 
 ASM::Instr Assembler::assertValidInstruction(token_t &token, int lineNumber)
@@ -369,10 +367,7 @@ ASM::Instr Assembler::assertValidInstruction(token_t &token, int lineNumber)
 
 void Assembler::assertValidInstructionCall(ASM::Instr instr, Assembler::section_name_t &section, int operandCount, int lineNumber)
 {
-    if (section == Assembler::Section::NO_SECTION)
-    {
-        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::NO_SECTION);
-    }
+    Assembler::assertSectionPreviouslyDeclared(section, lineNumber);
 
     ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
 
@@ -562,6 +557,14 @@ void Assembler::assertEquDirectiveCorrectOperandCount(Assembler::token_container
     }
 }
 
+void Assembler::assertSectionPreviouslyDeclared(Assembler::section_name_t &section, int lineNumber)
+{
+    if (section == Assembler::Section::NO_SECTION)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::NO_SECTION);
+    }
+}
+
 /* handle internal assembler structures and operations */
 void Assembler::assertInputFileExists(std::ifstream &file)
 {
@@ -581,7 +584,7 @@ void Assembler::initializeAssemblerTables()
     Assembler::SectionTables.insert(absoluteSection);
 }
 
-void Assembler::createSectionTable(section_name_t &section)
+void Assembler::createSectionTable(Assembler::section_name_t &section)
 {
     section_table_pair_t sectionTable = {
         section,
@@ -590,15 +593,28 @@ void Assembler::createSectionTable(section_name_t &section)
     Assembler::SectionTables.insert(sectionTable);
 }
 
-void Assembler::updateSectionLocationCounter(section_name_t &section, int addByteCount)
+int Assembler::getSectionLocationCounter(Assembler::section_name_t &section)
+{
+    auto &sectionTable = *(Assembler::SectionTables.find(section));
+    return sectionTable.second.locationCounter;
+}
+
+void Assembler::updateSectionLocationCounter(Assembler::section_name_t &section, int addByteCount)
 {
     auto &sectionTable = *(Assembler::SectionTables.find(section));
     sectionTable.second.locationCounter += addByteCount;
 }
 
-void Assembler::initBytesWithZero(section_name_t &section, int byteCount)
+void Assembler::insertIntoSectionTable(Assembler::section_name_t &section, Assembler::SectionTableRow_t row)
 {
     auto &sectionTable = *(Assembler::SectionTables.find(section));
+
+    sectionTable.second.row.push_back(row);
+    Assembler::updateSectionLocationCounter(section, row.size);
+}
+
+void Assembler::initBytesWithZero(section_name_t &section, int byteCount)
+{
     std::string bytecode = "";
 
     for (int i = 0; i < byteCount; i++)
@@ -610,13 +626,14 @@ void Assembler::initBytesWithZero(section_name_t &section, int byteCount)
         }
     }
 
-    sectionTable.second.row.push_back(
-        {sectionTable.second.locationCounter,
-         byteCount,
-         bytecode,
-         "Unused bytes initialized to 0 with .skip directive."} /* */
-    );
-    sectionTable.second.locationCounter += byteCount;
+    int locCounter = Assembler::getSectionLocationCounter(section);
+    Assembler::SectionTableRow_t row = {
+        locCounter,
+        byteCount,
+        bytecode,
+        "Unused bytes initialized to 0 with .skip directive." /* */
+    };
+    Assembler::insertIntoSectionTable(section, row);
 }
 
 void Assembler::assertSymbolUndeclared(Assembler::symbol_name_t &symbol, int lineNumber)
@@ -627,12 +644,17 @@ void Assembler::assertSymbolUndeclared(Assembler::symbol_name_t &symbol, int lin
     }
 }
 
+void Assembler::pushToSymbolTable(Assembler::symbol_table_row_pair_t row)
+{
+    Assembler::SymbolTableRow::ORDER_COUNTER++;
+    Assembler::SymbolTable.insert(row);
+}
+
 void Assembler::insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal, int lineNumber)
 {
     Assembler::assertSymbolUndeclared(symbol, lineNumber);
 
-    auto &sectionTable = *(Assembler::SectionTables.find(Assembler::Section::ABSOLUTE));
-    int locCounter = sectionTable.second.locationCounter;
+    int locCounter = Assembler::getSectionLocationCounter(Assembler::Section::ABSOLUTE);
 
     Assembler::symbol_table_row_pair_t row = {
         symbol,
@@ -641,21 +663,20 @@ void Assembler::insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal,
          true,
          Assembler::SymbolTableRow::ORDER_COUNTER} /* */
     };
-    Assembler::SymbolTableRow::ORDER_COUNTER++;
-    Assembler::SymbolTable.insert(row);
+    Assembler::pushToSymbolTable(row);
 
     std::string desc;
     std::stringstream converter;
     converter << "Local named literal " << symbol << " = " << literal;
     desc = converter.str();
 
-    sectionTable.second.row.push_back(
-        {sectionTable.second.locationCounter,
-         ASM::InstrSize::WORD,
-         Assembler::encodeLiteralToBytecode(literal),
-         desc} /* */
-    );
-    Assembler::updateSectionLocationCounter(Assembler::Section::ABSOLUTE, ASM::InstrSize::WORD);
+    Assembler::SectionTableRow_t sectionRow = {
+        locCounter,
+        ASM::InstrSize::WORD,
+        Assembler::encodeLiteralToBytecode(literal),
+        desc /* */
+    };
+    Assembler::insertIntoSectionTable(Assembler::Section::ABSOLUTE, sectionRow);
 }
 
 void Assembler::insertSection(Assembler::section_name_t &section, int lineNumber)
@@ -666,8 +687,7 @@ void Assembler::insertSection(Assembler::section_name_t &section, int lineNumber
         section,
         {section, 0, true, Assembler::SymbolTableRow::ORDER_COUNTER} /* */
     };
-    Assembler::SymbolTableRow::ORDER_COUNTER++;
-    Assembler::SymbolTable.insert(symbolTableRow);
+    Assembler::pushToSymbolTable(symbolTableRow);
 
     Assembler::createSectionTable(section);
 }
@@ -676,13 +696,13 @@ void Assembler::insertLabel(Assembler::symbol_name_t &label, section_name_t &sec
 {
     Assembler::assertSymbolUndeclared(label, lineNumber);
 
-    auto &sectionTable = *(Assembler::SectionTables.find(section));
+    int locCounter = Assembler::getSectionLocationCounter(section);
+
     Assembler::symbol_table_row_pair_t symbolTableRow = {
         label,
-        {section, sectionTable.second.locationCounter, true, Assembler::SymbolTableRow::ORDER_COUNTER} /* */
+        {section, locCounter, true, Assembler::SymbolTableRow::ORDER_COUNTER} /* */
     };
-    Assembler::SymbolTableRow::ORDER_COUNTER++;
-    Assembler::SymbolTable.insert(symbolTableRow);
+    Assembler::pushToSymbolTable(symbolTableRow);
 }
 
 int Assembler::prepareForNextLine(Assembler::token_container_t &tokens, int lineCounter)
@@ -709,6 +729,56 @@ void Assembler::resetSectionLocationCounters()
     {
         table.second.locationCounter = 0;
     }
+}
+
+void Assembler::initBytesWithLiteral(Assembler::token_t &token, Assembler::section_name_t &section, int lineNumber)
+{
+    ASM::word_t literal = Assembler::assertParseLiteral(token, lineNumber);
+    std::string bytecode = Assembler::encodeLiteralToBytecode(literal);
+
+    Assembler::assertSectionPreviouslyDeclared(section, lineNumber);
+
+    int locCounter = Assembler::getSectionLocationCounter(section);
+    std::stringstream stream;
+    stream << "Initialized directly with .word directive to value " << literal;
+
+    Assembler::SectionTableRow_t row = {
+        locCounter,
+        ASM::InstrSize::WORD,
+        bytecode,
+        stream.str() /* */
+    };
+    Assembler::insertIntoSectionTable(section, row);
+}
+
+void Assembler::initBytesWithSymbol(Assembler::token_t &token, Assembler::section_name_t &section, int lineNumber)
+{
+    int locCounter = Assembler::getSectionLocationCounter(section);
+    Assembler::SectionTableRow_t sectionRow = {
+        locCounter,
+        ASM::InstrSize::WORD,
+        "",
+        "" /* */
+    };
+
+    if (Assembler::SymbolTable.count(token) == 0)
+    {
+        sectionRow.bytecode = "?? ??";
+        sectionRow.description = ".word symbol initialization with an external symbol, awaiting linker to patch this memory space.";
+    }
+    else
+    {
+        auto &row = *(Assembler::SymbolTable.find(token));
+
+        ASM::word_t literal = (ASM::word_t)row.second.offset;
+        sectionRow.bytecode = Assembler::encodeLiteralToBytecode(literal);
+
+        std::stringstream stream;
+        stream << ".word initialization via symbol " << token << " with value " << literal << ".";
+        sectionRow.description = stream.str();
+    }
+
+    Assembler::insertIntoSectionTable(section, sectionRow);
 }
 
 /* second pass processing */
@@ -771,6 +841,27 @@ void Assembler::assertProgramHasEnd(bool endDirectiveDetected, int lineNumber)
     }
 }
 
+void Assembler::processWordDirective(Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
+{
+    ASM::word_t literal;
+    Assembler::token_t token;
+    std::string bytecode;
+
+    for (int i = 1 + labelOffset; i < tokens.size(); i++)
+    {
+        token = tokens.at(i);
+
+        if (Assembler::isValidSymbolName(token))
+        {
+            Assembler::initBytesWithSymbol(token, section, lineNumber);
+        }
+        else
+        {
+            Assembler::initBytesWithLiteral(token, section, lineNumber);
+        }
+    }
+}
+
 void Assembler::processDirective(Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
 {
     ASM::Directive dir = Assembler::assertValidDirective(tokens[labelOffset], lineNumber);
@@ -796,15 +887,12 @@ void Assembler::processDirective(Assembler::token_container_t &tokens, int label
         break;
 
     case ASM::Directive::DOT_WORD:
-
+        Assembler::processWordDirective(tokens, labelOffset, lineNumber, section);
         break;
 
     case ASM::Directive::DOT_SKIP:
-        // directive already fully processed in the first pass
-        break;
-
     case ASM::Directive::DOT_EQU:
-        // directive already fully processed in the first pass
+        // directives already fully processed in the first pass
         break;
     }
 }
