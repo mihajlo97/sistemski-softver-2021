@@ -23,6 +23,7 @@ isr_timer:
 	iret
 # prekidna rutina za terminal
 isr_terminal:
+	.word 0x0Ee1, 0xfA5b, undeclSym, isr_error
 	push r0
 	push r1
 	ldr r0, [r1 + 0x02] # term_in

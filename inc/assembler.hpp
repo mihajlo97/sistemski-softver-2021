@@ -503,6 +503,7 @@ namespace Assembler
     int calculateWordDirectiveOffset(token_container_t &tokens, int labelOffset, int lineNumber);                 /* returns the correct offset when the .word directive is used, otherwise throws an exception on invalid initializers */
     void assertSkipDirectiveOperandDeclared(token_container_t &tokens, int labelOffset, int lineNumber);          /* asserts that a operand for the .skip directive is declared, otherwise throws an exception */
     void assertEquDirectiveCorrectOperandCount(token_container_t &tokens, int labelOffset, int lineNumber);       /* asserts that the number of operands for the .equ directive is correct, otherwise throws an exception */
+    void assertSectionPreviouslyDeclared(section_name_t &section, int lineNumber);                                /* asserts that a .section has been declared prior to this line, otherwise throws an exception */
 
     /*
         Assembler data structures and internal assembler operations.
@@ -563,6 +564,7 @@ namespace Assembler
     void updateSectionLocationCounter(section_name_t &section, int addByteCount);             /* increases section location counter by addByteCount */
     void initBytesWithZero(section_name_t &section, int byteCount);                           /* allocates byteCount number of bytes and initializes them with 0 */
     void assertSymbolUndeclared(symbol_name_t &symbol, int lineNumber);                       /* will throw an error if the symbol has been already declared */
+    void pushToSymbolTable(symbol_table_row_pair_t row);                                      /* inserts symbol into symbol table with its associated data */
     void insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal, int lineNumber);    /* inserts symbol with its initial value into the absolute section and returns operation success */
     void insertSection(section_name_t &section, int lineNumber);                              /* insert section name into symbol table */
     void insertLabel(symbol_name_t &label, section_name_t &section, int lineNumber);          /* insert label into symbol table */
@@ -570,6 +572,10 @@ namespace Assembler
     void storeLine(lines_t &program, token_container_t &tokens, int lineNumber, LineTag tag); /* stores line data into run memory */
     void patchLineTag(lines_t &program, LineTag tag);                                         /* patches the last pushed line with the correct tag */
     void resetSectionLocationCounters();                                                      /* resets the location counter in each section table */
+    void initBytesWithLiteral(token_t &token, section_name_t &section, int lineNumber);       /* initializes section content with a token holding a valid literal */
+    void initBytesWithSymbol(token_t &token, section_name_t &section, int lineNumber);        /* initializes section content with the value the symbol holds */
+    int getSectionLocationCounter(section_name_t &section);                                   /* returns the location counter for the passed section */
+    void insertIntoSectionTable(section_name_t &section, SectionTableRow_t row);              /* inserts the passed row into the appropriate section table */
 
     /* second pass processing */
     void processDirective(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);        /* wraps directive declaration processing */
@@ -578,6 +584,7 @@ namespace Assembler
     void processSectionDirective(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section); /* processes the .section directive */
     bool endDirectiveDetected(token_container_t &tokens, int labelOffset, int lineNumber);                             /* detects if an .end directive is present in the tokens */
     void assertProgramHasEnd(bool endDirectiveDetected, int lineNumber);                                               /* asserts that an .end directive has been declared in the program, otherwise throws an error */
+    void processWordDirective(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);    /* processes the .word directive */
     void processInstruction(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);      /* wraps instruction declaration processing */
 
 }
