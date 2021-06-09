@@ -172,6 +172,7 @@ ASM::Instr Assembler::isValidInstruction(Assembler::token_t &token)
 
 bool Assembler::isValidRegisterReference(Assembler::token_t &token)
 {
+    Assembler::tokenToLowerCase(token);
     bool regFound = false;
 
     for (const auto &reg : ASM::Register)
@@ -565,6 +566,35 @@ void Assembler::assertSectionPreviouslyDeclared(Assembler::section_name_t &secti
     }
 }
 
+int Assembler::calcInstrOperandCountFromLine(Assembler::token_container_t &tokens, int labelOffset)
+{
+    return tokens.size() - 1 - labelOffset;
+}
+
+ASM::Regs Assembler::assertValidRegisterReference(Assembler::token_t &token, int lineNumber)
+{
+    bool regFound = false;
+    int i = 0, regID = -1;
+
+    for (const auto &reg : ASM::Register)
+    {
+        if (token == reg)
+        {
+            regFound = true;
+            regID = i;
+            break;
+        }
+        i++;
+    }
+
+    if (!regFound)
+    {
+        Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::NOT_ALL_REG);
+    }
+
+    return static_cast<ASM::Regs>((regFound) ? regID : ASM::Regs::INVALID_REG);
+}
+
 /* handle internal assembler structures and operations */
 void Assembler::assertInputFileExists(std::ifstream &file)
 {
@@ -781,7 +811,7 @@ void Assembler::initBytesWithSymbol(Assembler::token_t &token, Assembler::sectio
     Assembler::insertIntoSectionTable(section, sectionRow);
 }
 
-/* second pass processing */
+/* second pass directive processing */
 void Assembler::processExternDirective(Assembler::token_container_t &tokens, int labelOffset, int lineNumber)
 {
     for (int i = 1 + labelOffset; i < tokens.size(); i++)
@@ -897,8 +927,60 @@ void Assembler::processDirective(Assembler::token_container_t &tokens, int label
     }
 }
 
+/* second pass instruction processing */
+void Assembler::processHaltInstruction(ASM::Instr instr, Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
+{
+    ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
+    int locCounter = Assembler::getSectionLocationCounter(section);
+
+    Assembler::SectionTableRow_t row = {
+        locCounter,
+        instrDesc.size,
+        ASM::InstrCode[instr],
+        ASM::Instruction[instr] /* */
+    };
+    Assembler::insertIntoSectionTable(section, row);
+}
+
+void Assembler::processIntInstruction(ASM::Instr instr, Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
+{
+    ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
+    int locCounter = Assembler::getSectionLocationCounter(section);
+
+    Assembler::token_t token = tokens[1 + labelOffset];
+    Assembler::tokenToLowerCase(token);
+    ASM::Regs regRef = Assembler::assertValidRegisterReference(token, lineNumber);
+
+    std::stringstream stream, tokenStream;
+    stream << ASM::RegCode[regRef] << "F " << ASM::InstrCode[instr];
+    tokenStream << ASM::Instruction[instr] << " " << token << ";";
+
+    Assembler::SectionTableRow_t row = {
+        locCounter,
+        instrDesc.size,
+        stream.str(),
+        tokenStream.str() /* */
+    };
+    Assembler::insertIntoSectionTable(section, row);
+}
+
 void Assembler::processInstruction(token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
 {
+    Assembler::token_t token = tokens[labelOffset];
+    ASM::Instr instr = Assembler::assertValidInstruction(token, lineNumber);
+
+    int operandCount = Assembler::calcInstrOperandCountFromLine(tokens, labelOffset);
+    Assembler::assertValidInstructionCall(instr, section, operandCount, lineNumber);
+
+    switch (instr)
+    {
+    case ASM::Instr::HALT:
+        Assembler::processHaltInstruction(instr, tokens, labelOffset, lineNumber, section);
+        break;
+    case ASM::Instr::INT:
+        Assembler::processIntInstruction(instr, tokens, labelOffset, lineNumber, section);
+        break;
+    }
 }
 
 int main(int argc, char *argv[])
@@ -1023,7 +1105,7 @@ int main(int argc, char *argv[])
             else
             {
                 ASM::Instr instrID = Assembler::assertValidInstruction(token, lineCounter);
-                operandCount = tokens.size() - 1 - labelOffset;
+                operandCount = Assembler::calcInstrOperandCountFromLine(tokens, labelOffset);
                 Assembler::assertValidInstructionCall(instrID, currentSection, operandCount, lineCounter);
 
                 Assembler::patchLineTag(Program, (labelOffset) ? Assembler::LineTag::LABEL_INSTR_TAG : Assembler::LineTag::INSTR_TAG);

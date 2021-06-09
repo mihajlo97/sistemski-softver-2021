@@ -9,6 +9,7 @@
 
 typedef unsigned char byte_t;
 typedef short int word_t;
+typedef std::string bytecode_t;
 
 namespace ASM
 {
@@ -60,34 +61,34 @@ namespace ASM
         POP       /* pops operand from stack (not directly supported by CPU, needs transpiling) */
     };
 
-    const byte_t InstrCode[] = {
-        0x00, /* HALT */
-        0x10, /* INT */
-        0x20, /* IRET */
-        0x30, /* CALL */
-        0x40, /* RET */
-        0x50, /* JMP */
-        0x51, /* JEQ */
-        0x52, /* JNE */
-        0x53, /* JGT */
-        0x60, /* XCHG */
-        0x70, /* ADD */
-        0x71, /* SUB */
-        0x72, /* MUL */
-        0x73, /* DIV */
-        0x74, /* CMP */
-        0x80, /* NOT */
-        0x81, /* AND */
-        0x82, /* OR */
-        0x83, /* XOR */
-        0x84, /* TEST */
-        0x90, /* SHL */
-        0x91, /* SHR */
-        0xA0, /* LDR */
-        0xB0  /* STR */
+    const std::string InstrCode[] = {
+        "00", /* HALT */
+        "10", /* INT */
+        "20", /* IRET */
+        "30", /* CALL */
+        "40", /* RET */
+        "50", /* JMP */
+        "51", /* JEQ */
+        "52", /* JNE */
+        "53", /* JGT */
+        "60", /* XCHG */
+        "70", /* ADD */
+        "71", /* SUB */
+        "72", /* MUL */
+        "73", /* DIV */
+        "74", /* CMP */
+        "80", /* NOT */
+        "81", /* AND */
+        "82", /* OR */
+        "83", /* XOR */
+        "84", /* TEST */
+        "90", /* SHL */
+        "91", /* SHR */
+        "A0", /* LDR */
+        "B0"  /* STR */
     };
 
-    const std::string Instruction[] = {
+    const bytecode_t Instruction[] = {
         "halt",
         "int",
         "iret",
@@ -150,7 +151,7 @@ namespace ASM
         Instr instr;
         InstrOperand operandCount;
         InstrType type;
-        byte_t code;
+        bytecode_t code;
         InstrSize size;
         InstrSize altSize;
         bool allowOtherAddrModes;
@@ -202,67 +203,46 @@ namespace ASM
 
     enum Regs
     {
+        INVALID_REG = -1,
         R0 = 0,
-        R1 = 2,
-        R2 = 4,
-        R3 = 6,
-        R4 = 8,
-        R5 = 10,
-        R6 = 12,
-        R7 = 16,
-        SP = 12,
-        PC = 16,
-        PSW = 20
+        R1,
+        R2,
+        R3,
+        R4,
+        R5,
+        R6,
+        R7,
+        SP,
+        PC,
+        PSW
     };
 
-    const byte_t RegCode[] = {
-        0x00, /* r0 */
-        0x00, /* R0 (same register as r0, just an uppercase symbol reference) */
-        0x01, /* r1 */
-        0x01, /* R1 */
-        0x02, /* r2 */
-        0x02, /* R2 */
-        0x03, /* r3 */
-        0x03, /* R3 */
-        0x04, /* r4 */
-        0x04, /* R4 */
-        0x05, /* r5 */
-        0x05, /* R5 */
-        0x06, /* r6 */
-        0x06, /* R6 */
-        0x06, /* sp == r6 */
-        0x06, /* SP == R6 */
-        0x07, /* r7 */
-        0x07, /* R7 */
-        0x07, /* pc == r7 */
-        0x07, /* PC == R7 */
-        0x08, /* psw */
-        0x08  /* PSW */
+    const bytecode_t RegCode[] = {
+        "0", /* r0 */
+        "1", /* r1 */
+        "2", /* r2 */
+        "3", /* r3 */
+        "4", /* r4 */
+        "5", /* r5 */
+        "6", /* r6 */
+        "7", /* r7 */
+        "6", /* sp */
+        "7", /* pc */
+        "8"  /* psw */
     };
 
     const std::string Register[] = {
         "r0",
-        "R0",
         "r1",
-        "R1",
         "r2",
-        "R2",
         "r3",
-        "R3",
         "r4",
-        "R4",
         "r5",
-        "R5",
         "r6",
-        "R6",
-        "sp",
-        "SP",
         "r7",
-        "R7",
+        "sp",
         "pc",
-        "PC",
-        "psw",
-        "PSW" /* */
+        "psw" /* */
     };
 
     /*
@@ -304,21 +284,21 @@ namespace ASM
         REG_INDIR_INC_AFTER_W_OFF,
     };
 
-    const byte_t AddrModeCode[] = {
-        0x00, /* immediate */
-        0x01, /* registry direct */
-        0x02, /* registry indirect, no offset */
-        0x03, /* registry indirect, 16 bit signed offset */
-        0x04, /* memory direct */
-        0x05, /* registry direct with 16 bit signed offset */
-        0x12, /* reg. indir. no offset, reg - 2 before addr eval */
-        0x13, /* reg. indir. with offset, reg - 2 before addr eval */
-        0x22, /* reg. indir. no offset, reg + 2 before addr eval */
-        0x23, /* reg. indir. with offset, reg + 2 before addr eval */
-        0x32, /* reg. indir. no offset, reg - 2 after addr eval */
-        0x33, /* reg. indir. with offset, reg - 2 after addr eval */
-        0x42, /* reg. indir. no offset, reg + 2 after addr eval */
-        0x43, /* reg. indir. with offset, reg + 2 after addr eval */
+    const bytecode_t AddrModeCode[] = {
+        "00", /* immediate */
+        "01", /* registry direct */
+        "02", /* registry indirect, no offset */
+        "03", /* registry indirect, 16 bit signed offset */
+        "04", /* memory direct */
+        "05", /* registry direct with 16 bit signed offset */
+        "12", /* reg. indir. no offset, reg - 2 before addr eval */
+        "13", /* reg. indir. with offset, reg - 2 before addr eval */
+        "22", /* reg. indir. no offset, reg + 2 before addr eval */
+        "23", /* reg. indir. with offset, reg + 2 before addr eval */
+        "32", /* reg. indir. no offset, reg - 2 after addr eval */
+        "33", /* reg. indir. with offset, reg - 2 after addr eval */
+        "42", /* reg. indir. no offset, reg + 2 after addr eval */
+        "43"  /* reg. indir. with offset, reg + 2 after addr eval */
     };
 
     /*
@@ -412,7 +392,8 @@ namespace Assembler
         MULTIPLE_LABELS,
         REDECLARED_EXTERN,
         UNDECLARED_GLOBAL,
-        NO_END_DIRECTIVE /* */
+        NO_END_DIRECTIVE,
+        NOT_ALL_REG /* */
     };
 
     enum WarningCode
@@ -435,7 +416,8 @@ namespace Assembler
         "Error: Cannot declare multiple labels in line.",
         "Error: Cannot redeclare an external symbol.",
         "Error: Cannot declare symbol as global. Symbol declaration missing.",
-        "Error: Program must contain a .end directive." /* */
+        "Error: Program must contain a .end directive.",
+        "Error: All instruction operands must be register (r0..r7, pc, sp, psw) references." /* */
     };
 
     std::string WarningMessages[] = {
@@ -504,6 +486,8 @@ namespace Assembler
     void assertSkipDirectiveOperandDeclared(token_container_t &tokens, int labelOffset, int lineNumber);          /* asserts that a operand for the .skip directive is declared, otherwise throws an exception */
     void assertEquDirectiveCorrectOperandCount(token_container_t &tokens, int labelOffset, int lineNumber);       /* asserts that the number of operands for the .equ directive is correct, otherwise throws an exception */
     void assertSectionPreviouslyDeclared(section_name_t &section, int lineNumber);                                /* asserts that a .section has been declared prior to this line, otherwise throws an exception */
+    int calcInstrOperandCountFromLine(token_container_t &tokens, int labelOffset);                                /* calculates the number of operands used in the instruction call */
+    ASM::Regs assertValidRegisterReference(token_t &token, int lineNumber);                                       /* asserts that token holds a valid register reference, otherwise throws an exception */
 
     /*
         Assembler data structures and internal assembler operations.
@@ -577,7 +561,7 @@ namespace Assembler
     int getSectionLocationCounter(section_name_t &section);                                   /* returns the location counter for the passed section */
     void insertIntoSectionTable(section_name_t &section, SectionTableRow_t row);              /* inserts the passed row into the appropriate section table */
 
-    /* second pass processing */
+    /* second pass directive processing */
     void processDirective(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);        /* wraps directive declaration processing */
     void processExternDirective(token_container_t &tokens, int labelOffset, int lineNumber);                           /* processes the .extern directive */
     void processGlobalDirective(token_container_t &tokens, int labelOffset, int lineNumber);                           /* processes the .global directive */
@@ -585,7 +569,11 @@ namespace Assembler
     bool endDirectiveDetected(token_container_t &tokens, int labelOffset, int lineNumber);                             /* detects if an .end directive is present in the tokens */
     void assertProgramHasEnd(bool endDirectiveDetected, int lineNumber);                                               /* asserts that an .end directive has been declared in the program, otherwise throws an error */
     void processWordDirective(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);    /* processes the .word directive */
-    void processInstruction(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);      /* wraps instruction declaration processing */
+
+    /* second pass instruction processing */
+    void processHaltInstruction(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section); /* process the halt instruction */
+    void processIntInstruction(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);  /* process the int instruction*/
+    void processInstruction(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);                       /* wraps instruction declaration processing */
 
 }
 
