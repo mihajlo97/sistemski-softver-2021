@@ -1290,7 +1290,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                             bytecode_t value = Assembler::encodeLiteralToBytecode(diff);
                             bytecode_t valueAddress = Assembler::parseBytecodeToAddress(value);
 
-                            bytecodeStream << value << " " << addrModeCode << " F" << pc << " " << instrCode;
+                            bytecodeStream << value << " " << addrModeCode << " " << ASM::RegCode[regCode] << pc << " " << instrCode;
                             descStream << "mem[" << ASM::Register[regCode] << "+0x" << valueAddress << "] (" << payload << ") \t# registry indirect with offset jump;";
                         }
                         else
@@ -1309,7 +1309,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                             };
                             Assembler::pushToRelocationTable(relocRow);
 
-                            bytecodeStream << "?? ?? " << addrModeCode << " F" << pc << " " << instrCode;
+                            bytecodeStream << "?? ?? " << addrModeCode << " " << ASM::RegCode[regCode] << pc << " " << instrCode;
                             descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset jump via symbol offset from another section, waiting for linker to patch this memory space;" << std::endl;
                             descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                         }
@@ -1331,7 +1331,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                         };
                         Assembler::pushToRelocationTable(relocRow);
 
-                        bytecodeStream << "?? ?? " << addrModeCode << " F" << pc << " " << instrCode;
+                        bytecodeStream << "?? ?? " << addrModeCode << " " << ASM::RegCode[regCode] << pc << " " << instrCode;
                         descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset jump via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
                         descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                     }
@@ -1349,7 +1349,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                         addrMode = ASM::AddrMode::REG_INDIR_W_OFF;
                         addrModeCode = ASM::AddrModeCode[addrMode];
 
-                        bytecodeStream << value << " " << addrModeCode << " F" << pc << " " << instrCode;
+                        bytecodeStream << value << " " << addrModeCode << " " << ASM::RegCode[regCode] << pc << " " << instrCode;
                         descStream << "mem[" << ASM::Register[regCode] << "+0x" << payloadBytecode << "] \t# registry indirect with offset jump;";
                     }
                     catch (Assembler::ErrorCode code)
@@ -1747,7 +1747,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 bytecode_t value = Assembler::encodeLiteralToBytecode(symbolOffset);
                 bytecode_t payloadAddr = Assembler::parseBytecodeToAddress(value);
 
-                bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << ASM::RegCode[ASM::Regs::PC] << " " << instrCode;
                 descStream << "mem[<%pc+(" << section << "+0x" << payloadAddr << ")>] (" << secondOp << ") \t# pc relative memory access;";
             }
             else
@@ -1766,7 +1766,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 };
                 Assembler::pushToRelocationTable(relocRow);
 
-                bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << ASM::RegCode[ASM::Regs::PC] << " " << instrCode;
                 descStream << "mem[<%pc+0x??\?\?>] (" << secondOp << ") \t# pc relative memory access via symbol offset in another section, waiting for linker to patch this memory space;" << std::endl;
                 descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
             }
@@ -1788,7 +1788,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
             };
             Assembler::pushToRelocationTable(relocRow);
 
-            bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+            bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << ASM::RegCode[ASM::Regs::PC] << " " << instrCode;
             descStream << "mem[<%pc+0x??\?\?>] (" << secondOp << ") \t# pc relative memory access via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
             descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
         }
@@ -1842,7 +1842,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                         bytecode_t value = Assembler::encodeLiteralToBytecode(diff);
                         bytecode_t valueAddress = Assembler::parseBytecodeToAddress(value);
 
-                        bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                        bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << ASM::RegCode[regCode] << " " << instrCode;
                         descStream << "mem[" << ASM::Register[regCode] << "+0x" << valueAddress << "] (" << payload << ") \t# registry indirect with offset addressing;";
                     }
                     else
@@ -1861,7 +1861,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                         };
                         Assembler::pushToRelocationTable(relocRow);
 
-                        bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                        bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << ASM::RegCode[regCode] << " " << instrCode;
                         descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset addressing via symbol offset from another section, waiting for linker to patch this memory space;" << std::endl;
                         descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                     }
@@ -1883,7 +1883,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     };
                     Assembler::pushToRelocationTable(relocRow);
 
-                    bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                    bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << ASM::RegCode[regCode] << " " << instrCode;
                     descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset addressing via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
                     descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                 }
@@ -1901,7 +1901,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     addrMode = ASM::AddrMode::REG_INDIR_W_OFF;
                     addrModeCode = ASM::AddrModeCode[addrMode];
 
-                    bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                    bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << ASM::RegCode[regCode] << " " << instrCode;
                     descStream << "mem[" << ASM::Register[regCode] << "+0x" << payloadBytecode << "] \t# registry indirect with offset addressing;";
                 }
                 catch (Assembler::ErrorCode code)

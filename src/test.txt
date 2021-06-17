@@ -19,10 +19,10 @@
 0022: 02 00		# .word initialization via symbol isr_error with value 2.
 0024: 12 06 B0		push r0
 0027: 12 16 B0		push r1
-002A: 02 00 03 0F A0		ldr r0, mem[r1+0x0002] 	# registry indirect with offset addressing;
+002A: 02 00 03 01 A0		ldr r0, mem[r1+0x0002] 	# registry indirect with offset addressing;
 002F: ?? ?? 04 0F B0		str r0, mem[0x????] (term_out) 	# memory direct addressing via symbol in another section, waiting for linker to patch this memory space;
 	002F: R_MOCK_CPU_ABS	term_out-0x0004;
-0034: ?? ?? 03 0F A0		ldr r0, mem[<%pc+0x????>] (myCounter) 	# pc relative memory access via external symbol offset, waiting for linker to patch this memory space;
+0034: ?? ?? 03 07 A0		ldr r0, mem[<%pc+0x????>] (myCounter) 	# pc relative memory access via external symbol offset, waiting for linker to patch this memory space;
 	0034: R_MOCK_CPU_PC16	myCounter-0x0004;
 0039: 01 00 00 1F A0		ldr r1, 0x0001 # immediate addressing;
 003E: 01 70		add r0, r1;
