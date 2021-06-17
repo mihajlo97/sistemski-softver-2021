@@ -1203,7 +1203,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                     {
                         // handle *<symbol>, symbol in another section
                         int orderID = Assembler::getSymbolOrderID(operand);
-                        bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                        bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                         Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                         Assembler::RelocationTableRow_t relocRow = {
@@ -1225,7 +1225,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                     // handle *<symbol>, symbol is external
                     int orderID = Assembler::insertExternalSymbol(operand);
                     int nextInstr = locCounter + instrDesc.altSize;
-                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                     Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
 
                     Assembler::RelocationTableRow_t relocRow = {
@@ -1233,7 +1233,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                         locCounter,
                         relocType,
                         orderID,
-                        -nextInstr /* */
+                        -instrDesc.altSize /* */
                     };
                     Assembler::pushToRelocationTable(relocRow);
 
@@ -1297,7 +1297,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                         {
                             // handle *[reg + symbol], symbol in another section
                             int orderID = Assembler::getSymbolOrderID(payload);
-                            bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                            bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                             Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                             Assembler::RelocationTableRow_t relocRow = {
@@ -1319,7 +1319,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                         // handle *[reg + symbol], symbol is external
                         int orderID = Assembler::insertExternalSymbol(payload);
                         int nextInstr = locCounter + instrDesc.altSize;
-                        bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                        bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                         Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
 
                         Assembler::RelocationTableRow_t relocRow = {
@@ -1327,7 +1327,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                             locCounter,
                             relocType,
                             orderID,
-                            -nextInstr /* */
+                            -instrDesc.altSize /* */
                         };
                         Assembler::pushToRelocationTable(relocRow);
 
@@ -1413,7 +1413,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
             {
                 // handle %<symbol>, symbol in another section
                 int orderID = Assembler::getSymbolOrderID(operand);
-                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                 Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                 Assembler::RelocationTableRow_t relocRow = {
@@ -1435,7 +1435,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
             // handle %<symbol>, symbol is external
             int orderID = Assembler::insertExternalSymbol(operand);
             int nextInstr = locCounter + instrDesc.altSize;
-            bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+            bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
             Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
 
             Assembler::RelocationTableRow_t relocRow = {
@@ -1443,7 +1443,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                 locCounter,
                 relocType,
                 orderID,
-                -nextInstr /* */
+                -instrDesc.altSize /* */
             };
             Assembler::pushToRelocationTable(relocRow);
 
@@ -1484,7 +1484,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                 {
                     // handle <symbol>, symbol in another section
                     int orderID = Assembler::getSymbolOrderID(operand);
-                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                     Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                     Assembler::RelocationTableRow_t relocRow = {
@@ -1506,7 +1506,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                 // handle <symbol>, symbol is external
                 int orderID = Assembler::insertExternalSymbol(operand);
                 int nextInstr = locCounter + instrDesc.altSize;
-                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                 Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
 
                 Assembler::RelocationTableRow_t relocRow = {
@@ -1514,7 +1514,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                     locCounter,
                     relocType,
                     orderID,
-                    -nextInstr /* */
+                    -instrDesc.altSize /* */
                 };
                 Assembler::pushToRelocationTable(relocRow);
 
@@ -1665,7 +1665,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 {
                     // handle <symbol>, symbol in another section
                     int orderID = Assembler::getSymbolOrderID(secondOp);
-                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                     Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                     Assembler::RelocationTableRow_t relocRow = {
@@ -1687,7 +1687,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 // handle <symbol>, symbol is external
                 int orderID = Assembler::insertExternalSymbol(secondOp);
                 int nextInstr = locCounter + instrDesc.altSize;
-                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                 Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
 
                 Assembler::RelocationTableRow_t relocRow = {
@@ -1695,7 +1695,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     locCounter,
                     relocType,
                     orderID,
-                    -nextInstr /* */
+                    -instrDesc.altSize /* */
                 };
                 Assembler::pushToRelocationTable(relocRow);
 
@@ -1754,7 +1754,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
             {
                 // handle %<symbol>, symbol in another section
                 int orderID = Assembler::getSymbolOrderID(secondOp);
-                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                 Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                 Assembler::RelocationTableRow_t relocRow = {
@@ -1776,7 +1776,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
             // handle %<symbol>, symbol is external
             int orderID = Assembler::insertExternalSymbol(secondOp);
             int nextInstr = locCounter + instrDesc.altSize;
-            bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+            bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
             Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
 
             Assembler::RelocationTableRow_t relocRow = {
@@ -1784,7 +1784,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 locCounter,
                 relocType,
                 orderID,
-                -nextInstr /* */
+                -instrDesc.altSize /* */
             };
             Assembler::pushToRelocationTable(relocRow);
 
@@ -1849,7 +1849,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     {
                         // handle *[reg + symbol], symbol in another section
                         int orderID = Assembler::getSymbolOrderID(payload);
-                        bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                        bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                         Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                         Assembler::RelocationTableRow_t relocRow = {
@@ -1871,7 +1871,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     // handle *[reg + symbol], symbol is external
                     int orderID = Assembler::insertExternalSymbol(payload);
                     int nextInstr = locCounter + instrDesc.altSize;
-                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                     Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
 
                     Assembler::RelocationTableRow_t relocRow = {
@@ -1879,7 +1879,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                         locCounter,
                         relocType,
                         orderID,
-                        -nextInstr /* */
+                        -instrDesc.altSize /* */
                     };
                     Assembler::pushToRelocationTable(relocRow);
 
@@ -1978,7 +1978,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 {
                     // handle <symbol>, symbol in another section
                     int orderID = Assembler::getSymbolOrderID(secondOp);
-                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                     Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                     Assembler::RelocationTableRow_t relocRow = {
@@ -2000,7 +2000,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 // handle <symbol>, symbol is external
                 int orderID = Assembler::insertExternalSymbol(secondOp);
                 int nextInstr = locCounter + instrDesc.altSize;
-                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + instrDesc.altSize + 1));
                 Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
 
                 Assembler::RelocationTableRow_t relocRow = {
@@ -2008,7 +2008,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     locCounter,
                     relocType,
                     orderID,
-                    -nextInstr /* */
+                    -instrDesc.altSize /* */
                 };
                 Assembler::pushToRelocationTable(relocRow);
 

@@ -5,12 +5,12 @@
 
 0006 <isr>:
 0006: ?? ?? 00 F7 50		jmp 0x???? (myStart) 	# absolute jump via external symbol, waiting for linker to patch this memory space;
-	0001: R_MOCK_CPU_PC16	myStart-0x0004;
+	0006: R_MOCK_CPU_PC16	myStart-0x0004;
 000B: 12 06 B0		push r0
 000E: ?? ?? 00 0F A0		ldr r0, 0x???? (asciiCode) 	# immediate addressing via symbol in another section, waiting for linker to patch this memory space;
-	0009: R_MOCK_CPU_ABS	asciiCode-0x0004;
+	000E: R_MOCK_CPU_ABS	asciiCode-0x0004;
 0013: ?? ?? 04 0F B0		str r0, mem[0x????] (term_out) 	# memory direct addressing via symbol in another section, waiting for linker to patch this memory space;
-	000E: R_MOCK_CPU_ABS	term_out-0x0004;
+	0013: R_MOCK_CPU_ABS	term_out-0x0004;
 0018: 42 06 A0		pop r0
 001B: 20		iret
 001C: E1 0E		# Initialized directly with .word directive to value 3809;
@@ -21,13 +21,13 @@
 0027: 12 16 B0		push r1
 002A: 02 00 03 0F A0		ldr r0, mem[r1+0x0002] 	# registry indirect with offset addressing;
 002F: ?? ?? 04 0F B0		str r0, mem[0x????] (term_out) 	# memory direct addressing via symbol in another section, waiting for linker to patch this memory space;
-	002A: R_MOCK_CPU_ABS	term_out-0x0004;
+	002F: R_MOCK_CPU_ABS	term_out-0x0004;
 0034: ?? ?? 03 0F A0		ldr r0, mem[<%pc+0x????>] (myCounter) 	# pc relative memory access via external symbol offset, waiting for linker to patch this memory space;
-	002F: R_MOCK_CPU_PC16	myCounter-0x0004;
+	0034: R_MOCK_CPU_PC16	myCounter-0x0004;
 0039: 01 00 00 1F A0		ldr r1, 0x0001 # immediate addressing;
 003E: 01 70		add r0, r1;
 0040: ?? ?? 04 0F B0		str r0, mem[0x????] (mycounter) 	# mmeory direct addressing via external symbol, waiting for linker to patch this memory space;
-	003B: R_MOCK_CPU_PC16	mycounter-0x0004;
+	0040: R_MOCK_CPU_PC16	mycounter-0x0004;
 0045: 42 16 A0		pop r1
 0048: 42 06 A0		pop r0
 004B: 20		iret
