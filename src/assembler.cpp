@@ -1588,6 +1588,48 @@ void Assembler::DEFUNCT_processJumpInstruction(ASM::Instr instr, Assembler::toke
 
 void Assembler::processPushPop(ASM::Instr instr, Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
 {
+    // transpile into valid instructions:
+    // push <reg> => str <reg>, [sp] (sp -= 2 before);
+    // pop <reg> => ldr <reg>, [sp] (sp += 2 after);
+
+    int locCounter = Assembler::getSectionLocationCounter(section);
+
+    bytecode_t instrCode = ASM::InstrCode[instr];
+    ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
+    Assembler::token_t operand = tokens[1 + labelOffset];
+    ASM::Regs sp = ASM::Regs::SP;
+
+    ASM::AddrMode addrMode;
+    std::stringstream bytecodeStream, descStream;
+
+    Assembler::assertValidRegisterReference(operand, lineNumber);
+
+    ASM::Regs reg = Assembler::getRegisterCode(operand);
+
+    if (instr == ASM::Instr::PUSH)
+    {
+        addrMode = ASM::AddrMode::REG_INDIR_DEC_BEFORE;
+        bytecodeStream << addrMode << " " << ASM::RegCode[reg] << ASM::RegCode[sp] << " " << instrCode;
+        descStream << ASM::Instruction[instr] << " " << ASM::Register[reg];
+    }
+    else if (instr == ASM::Instr::POP)
+    {
+        addrMode = ASM::AddrMode::REG_INDIR_INC_AFTER;
+        bytecodeStream << addrMode << " " << ASM::RegCode[reg] << ASM::RegCode[sp] << " " << instrCode;
+        descStream << ASM::Instruction[instr] << " " << ASM::Register[reg];
+    }
+    else
+    {
+        return;
+    }
+
+    Assembler::SectionTableRow_t row = {
+        locCounter,
+        instrDesc.size,
+        bytecodeStream.str(),
+        descStream.str() /* */
+    };
+    Assembler::insertIntoSectionTable(section, row);
 }
 
 void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)

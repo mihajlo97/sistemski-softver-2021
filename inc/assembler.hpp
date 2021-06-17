@@ -182,8 +182,8 @@ namespace ASM
         {Instr::SHR, InstrOperand::DOUBLE, InstrType::NOT_JUMP, InstrCode[Instr::SHR], InstrSize::WORD, InstrSize::NONE, false},
         {Instr::LDR, InstrOperand::DOUBLE, InstrType::NOT_JUMP, InstrCode[Instr::LDR], InstrSize::STANDARD, InstrSize::MAX, true},
         {Instr::STR, InstrOperand::DOUBLE, InstrType::NOT_JUMP, InstrCode[Instr::STR], InstrSize::STANDARD, InstrSize::MAX, true},
-        {Instr::PUSH, InstrOperand::SINGLE, InstrType::NOT_JUMP, InstrCode[Instr::PUSH], InstrSize::MAX, InstrSize::NONE, false},
-        {Instr::POP, InstrOperand::SINGLE, InstrType::NOT_JUMP, InstrCode[Instr::POP], InstrSize::MAX, InstrSize::NONE, false} /* */
+        {Instr::PUSH, InstrOperand::SINGLE, InstrType::NOT_JUMP, InstrCode[Instr::PUSH], InstrSize::STANDARD, InstrSize::NONE, false},
+        {Instr::POP, InstrOperand::SINGLE, InstrType::NOT_JUMP, InstrCode[Instr::POP], InstrSize::STANDARD, InstrSize::NONE, false} /* */
     };
 
     /*
