@@ -552,6 +552,11 @@ namespace Assembler
         relocation_type_t relocationType;
         int orderID;
         int patchOffset;
+
+        void printRow()
+        {
+            std::cout << '{' << section << ", " << offset << ", " << relocationType << ", " << orderID << ", " << patchOffset << '}';
+        }
     } RelocationTableRow_t;
 
     typedef struct SectionTableRow
@@ -688,6 +693,18 @@ namespace DebugAssembler
                 section.printRow();
                 std::cout << std::endl;
             }
+            std::cout << std::endl;
+        }
+    }
+
+    void debugRelocationTable()
+    {
+        std::cout << "Relocation table content: " << std::endl;
+        std::cout << "{section, offset, relocation type, order, patch offset}" << std::endl
+                  << std::endl;
+        for (auto &row : Assembler::RelocationTable)
+        {
+            row.printRow();
             std::cout << std::endl;
         }
     }

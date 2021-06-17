@@ -1275,9 +1275,9 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                 // handle *[reg + symbol]
                 if (Assembler::isValidSymbolName(payload))
                 {
-                    if (Assembler::isSymbolDeclared(operand))
+                    if (Assembler::isSymbolDeclared(payload))
                     {
-                        if (Assembler::isSymbolInSectionScope(operand, section))
+                        if (Assembler::isSymbolInSectionScope(payload, section))
                         {
                             // handle *[reg + symbol], symbol in section
                             int symbolOffset = Assembler::getSymbolOffset(payload);
@@ -1291,7 +1291,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                             bytecode_t valueAddress = Assembler::parseBytecodeToAddress(value);
 
                             bytecodeStream << value << " " << addrModeCode << " F" << pc << " " << instrCode;
-                            descStream << "mem[" << ASM::Register[regCode] << "+0x" << valueAddress << "] (" << payload << ") \t# registry indirect with offset jump;" << std::endl;
+                            descStream << "mem[" << ASM::Register[regCode] << "+0x" << valueAddress << "] (" << payload << ") \t# registry indirect with offset jump;";
                         }
                         else
                         {
@@ -1311,7 +1311,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
 
                             bytecodeStream << "?? ?? " << addrModeCode << " F" << pc << " " << instrCode;
                             descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset jump via symbol offset from another section, waiting for linker to patch this memory space;" << std::endl;
-                            descStream << "\t" << relocOffset << ": " << relocType << "\t" << operand << "-0x0004;";
+                            descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                         }
                     }
                     else
@@ -1636,47 +1636,51 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
 {
     // yep, even more garbage
     // processes the ldr/str instructions with its various operand syntax formats
+
     int locCounter = Assembler::getSectionLocationCounter(section);
     bool useAltSize = false;
 
     bytecode_t instrCode = ASM::InstrCode[instr];
     ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
-    Assembler::token_t reg = tokens[1 + labelOffset], operand = tokens[2 + labelOffset];
+
+    Assembler::token_t firstOp = tokens[1 + labelOffset], secondOp = tokens[2 + labelOffset];
 
     ASM::AddrMode addrMode;
     bytecode_t addrModeCode;
-    ASM::Regs regCode;
-    bytecode_t regBytecode;
+    ASM::Regs firstOpCode;
+    bytecode_t firstOpBytecode;
 
     std::stringstream bytecodeStream, descStream;
 
-    char leadingChar = operand[0];
-
-    if (!Assembler::isValidRegisterReference(reg))
+    if (!Assembler::isValidRegisterReference(firstOp))
     {
         Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_FIRST_OPERAND);
     }
 
-    regCode = Assembler::getRegisterCode(reg);
-    regBytecode = ASM::RegCode[regCode];
-    descStream << ASM::Instruction[instr] << " " << ASM::Register[regCode] << ", ";
+    firstOpCode = Assembler::getRegisterCode(firstOp);
+    firstOpBytecode = ASM::RegCode[firstOpCode];
+    descStream << ASM::Instruction[instr] << " " << ASM::Register[firstOpCode] << ", ";
+
+    char leadingChar = secondOp[0];
 
     // handle $<symbol|literal>
     if (leadingChar == ASM::ReservedSymbols[ASM::Symbol::DOLLAR])
     {
+        secondOp.erase(0, 1);
+
         useAltSize = true;
         addrMode = ASM::AddrMode::IMM;
         addrModeCode = ASM::AddrModeCode[addrMode];
 
-        // handle $<symbol>
-        if (Assembler::isValidSymbolName(operand))
+        // handle $<symbol|literal>
+        if (Assembler::isValidSymbolName(secondOp))
         {
-            if (Assembler::isSymbolDeclared(operand))
+            if (Assembler::isSymbolDeclared(secondOp))
             {
-                if (Assembler::isSymbolInSectionScope(operand, section))
+                if (Assembler::isSymbolInSectionScope(secondOp, section))
                 {
-                    // handle $<symbol>, symbol in section
-                    int symbolOffset = Assembler::getSymbolOffset(operand);
+                    // handle <symbol>, symbol in section
+                    int symbolOffset = Assembler::getSymbolOffset(secondOp);
                     int nextInstr = locCounter + instrDesc.altSize;
 
                     // perform correct truncation down to 16bit for signed operands
@@ -1684,16 +1688,17 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     ASM::word_t payload = diff_32b;
                     payload = (symbolOffset > nextInstr) ? payload : -payload;
                     bytecode_t value = Assembler::encodeLiteralToBytecode(payload);
+                    bytecode_t valueAddr = Assembler::parseBytecodeToAddress(value);
 
-                    bytecodeStream << value << " " << addrModeCode << " " << regBytecode << "F " << instrCode;
-                    descStream << "<" << section << "+0x" << Assembler::parseBytecodeToAddress(value) << "> \t# immediate operand addressing;" << std::endl;
+                    bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                    descStream << "<%pc+0x" << valueAddr << "> (" << secondOp << ") \t# immediate addressing;";
                 }
                 else
                 {
-                    // handle $<symbol>, symbol in another section
-                    int orderID = Assembler::getSymbolOrderID(operand);
+                    // handle <symbol>, symbol in another section
+                    int orderID = Assembler::getSymbolOrderID(secondOp);
                     bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
-                    Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
+                    Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                     Assembler::RelocationTableRow_t relocRow = {
                         section,
@@ -1704,15 +1709,15 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     };
                     Assembler::pushToRelocationTable(relocRow);
 
-                    bytecodeStream << "00 00 " << addrModeCode << " " << regBytecode << "F " << instrCode;
-                    descStream << "0x0000 (" << operand << ") \t# immediate operand addressing via symbol from another section, waiting for linker to patch this memory space;" << std::endl;
-                    descStream << "\t" << relocOffset << ": " << relocType << "\t" << operand << "-0x0004;";
+                    bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                    descStream << "0x???? (" << secondOp << ") \t# immediate addressing via symbol in another section, waiting for linker to patch this memory space;" << std::endl;
+                    descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
                 }
             }
             else
             {
-                // handle $<symbol>, symbol is external
-                int orderID = Assembler::insertExternalSymbol(operand);
+                // handle <symbol>, symbol is external
+                int orderID = Assembler::insertExternalSymbol(secondOp);
                 int nextInstr = locCounter + instrDesc.altSize;
                 bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
                 Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
@@ -1726,26 +1731,26 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 };
                 Assembler::pushToRelocationTable(relocRow);
 
-                bytecodeStream << "?? ?? " << addrModeCode << " " << regBytecode << "F " << instrCode;
-                descStream << "0x???? (" << operand << ") \t# immediate operand addressing from external symbol, waiting for linker to patch this memory space;" << std::endl;
-                descStream << "\t" << relocOffset << ": " << relocType << "\t" << operand << "-0x0004;";
+                bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                descStream << "0x???? (" << secondOp << ") \t# immediate addressing via external symbol, waiting for linker to patch this memory space;" << std::endl;
+                descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
             }
         }
         else
         {
-            // handle $<literal>
+            // handle <literal>
             try
             {
-                ASM::word_t literal = Assembler::tryParseLiteral(operand, lineNumber);
+                ASM::word_t literal = Assembler::tryParseLiteral(secondOp, lineNumber);
                 bytecode_t value = Assembler::encodeLiteralToBytecode(literal);
-                bytecode_t valueBytecode = Assembler::parseBytecodeToAddress(value);
+                bytecode_t valueFixed = Assembler::parseBytecodeToAddress(value);
 
-                bytecodeStream << value << " " << addrModeCode << " " << regBytecode << "F " << instrCode;
-                descStream << "0x" << valueBytecode << "\t# immediate operand addressing;";
+                bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                descStream << "0x" << valueFixed << " # immediate addressing;";
             }
             catch (Assembler::ErrorCode code)
             {
-                Assembler::willThrowOnToken(operand);
+                Assembler::willThrowOnToken(secondOp);
                 Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_SECOND_OPERAND);
             }
         }
@@ -1753,36 +1758,36 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
     // handle %<symbol>
     else if (leadingChar == ASM::ReservedSymbols[ASM::Symbol::PERCENT])
     {
-        operand.erase(0, 1);
-
-        if (!Assembler::isValidSymbolName(operand))
+        secondOp.erase(0, 1);
+        if (!Assembler::isValidSymbolName(secondOp))
         {
-            Assembler::willThrowOnToken(operand);
+            Assembler::willThrowOnToken(secondOp);
             Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_SECOND_OPERAND);
         }
 
         useAltSize = true;
-        addrMode = ASM::AddrMode::MEM_DIR;
+        addrMode = ASM::AddrMode::REG_INDIR_W_OFF;
         addrModeCode = ASM::AddrModeCode[addrMode];
 
         // handle %<symbol>
-        if (Assembler::isSymbolDeclared(operand))
+        if (Assembler::isSymbolDeclared(secondOp))
         {
-            if (Assembler::isSymbolInSectionScope(operand, section))
+            if (Assembler::isSymbolInSectionScope(secondOp, section))
             {
                 // handle %<symbol>, symbol in section
-                int symbolOffset = Assembler::getSymbolOffset(operand);
-                bytecode_t payload = Assembler::encodeLiteralToBytecode(symbolOffset);
+                int symbolOffset = Assembler::getSymbolOffset(secondOp);
+                bytecode_t value = Assembler::encodeLiteralToBytecode(symbolOffset);
+                bytecode_t payloadAddr = Assembler::parseBytecodeToAddress(value);
 
-                bytecodeStream << payload << " " << addrModeCode << " " << regBytecode << "F " << instrCode;
-                descStream << "mem[%pc+" << section << "+0x" << Assembler::parseBytecodeToAddress(payload) << "]\t# memory direct addressing;";
+                bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                descStream << "mem[<%pc+(" << section << "+0x" << payloadAddr << ")>] (" << secondOp << ") \t# pc relative memory access;";
             }
             else
             {
                 // handle %<symbol>, symbol in another section
-                int orderID = Assembler::getSymbolOrderID(operand);
+                int orderID = Assembler::getSymbolOrderID(secondOp);
                 bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
-                Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
+                Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                 Assembler::RelocationTableRow_t relocRow = {
                     section,
@@ -1793,15 +1798,15 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 };
                 Assembler::pushToRelocationTable(relocRow);
 
-                bytecodeStream << "00 00 " << addrModeCode << " " << regBytecode << "F " << instrCode;
-                descStream << "mem[%pc+0x????] (" << operand << ")\t# memory direct addressing via symbol in different section, waiting for linker to patch this memory space;" << std::endl;
-                descStream << "\t" << relocOffset << ": " << relocType << "\t" << operand << "-0x0004;";
+                bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+                descStream << "mem[<%pc+0x????>] (" << secondOp << ") \t# pc relative memory access via symbol offset in another section, waiting for linker to patch this memory space;" << std::endl;
+                descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
             }
         }
         else
         {
             // handle %<symbol>, symbol is external
-            int orderID = Assembler::insertExternalSymbol(operand);
+            int orderID = Assembler::insertExternalSymbol(secondOp);
             int nextInstr = locCounter + instrDesc.altSize;
             bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
             Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
@@ -1815,64 +1820,69 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
             };
             Assembler::pushToRelocationTable(relocRow);
 
-            bytecodeStream << "?? ?? " << addrModeCode << " " << regBytecode << "F " << instrCode;
-            descStream << "mem[%pc+????] (" << operand << ")\t# memory direct addressing via external symbol, waiting for linker to patch this memory space;" << std::endl;
-            descStream << "\t" << relocOffset << ": " << relocType << "\t" << operand << "-0x0004;";
+            bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
+            descStream << "mem[<%pc+0x????>] (" << secondOp << ") \t# pc relative memory access via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
+            descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
         }
     }
-    // handle [reg...]
+    // handle <[reg...]>
     else if (leadingChar == ASM::ReservedSymbols[ASM::Symbol::BRACKET_OPEN])
     {
-        if (operand[operand.length() - 1] != ASM::ReservedSymbols[ASM::Symbol::BRACKET_CLOSE])
+        if (secondOp[secondOp.length() - 1] != ASM::ReservedSymbols[ASM::Symbol::BRACKET_CLOSE])
         {
-            Assembler::willThrowOnToken(operand);
+            Assembler::willThrowOnToken(secondOp);
             Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_SECOND_OPERAND);
         }
 
-        int plusSymbolIndex = operand.find_first_of(ASM::ReservedSymbols[ASM::Symbol::PLUS]);
-        int operandLast = operand.length() - 1;
-
-        useAltSize = true;
-        addrMode = ASM::AddrMode::MEM_DIR;
-        addrModeCode = ASM::AddrModeCode[addrMode];
-
         // handle [reg...]
+        int plusSymbolIndex = secondOp.find_first_of(ASM::ReservedSymbols[ASM::Symbol::PLUS]);
+        int operandLast = secondOp.length() - 1;
+
         if (plusSymbolIndex >= 0)
         {
             // handle [reg + ...]
-            token_t secondReg = operand.substr(1, plusSymbolIndex - 1);
-            token_t payload = operand.substr(plusSymbolIndex + 1, operandLast - plusSymbolIndex - 1);
+            token_t reg = secondOp.substr(1, plusSymbolIndex - 1);
+            token_t payload = secondOp.substr(plusSymbolIndex + 1, operandLast - plusSymbolIndex - 1);
+
+            if (!Assembler::isValidRegisterReference(reg))
+            {
+                Assembler::willThrowOnToken(secondOp);
+                Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_SECOND_OPERAND);
+            }
+
+            ASM::Regs regCode = Assembler::getRegisterCode(reg);
 
             useAltSize = true;
             addrMode = ASM::AddrMode::REG_INDIR_W_OFF;
             addrModeCode = ASM::AddrModeCode[addrMode];
 
-            // handle [reg + symbol]
+            // handle *[reg + symbol]
             if (Assembler::isValidSymbolName(payload))
             {
-                if (Assembler::isSymbolDeclared(operand))
+                if (Assembler::isSymbolDeclared(payload))
                 {
-                    if (Assembler::isSymbolInSectionScope(operand, section))
+                    if (Assembler::isSymbolInSectionScope(payload, section))
                     {
-                        // handle [reg + symbol], symbol in section
-                        int symbolOffset = Assembler::getSymbolOffset(operand);
+                        // handle *[reg + symbol], symbol in section
+                        int symbolOffset = Assembler::getSymbolOffset(payload);
                         int nextInstr = locCounter + instrDesc.altSize;
 
                         // perform correct truncation down to 16bit for signed operands
                         int diff_32b = (symbolOffset > nextInstr) ? symbolOffset - nextInstr : nextInstr - symbolOffset;
-                        ASM::word_t payload = diff_32b;
-                        payload = (symbolOffset > nextInstr) ? payload : -payload;
-                        bytecode_t value = Assembler::encodeLiteralToBytecode(payload);
+                        ASM::word_t diff = diff_32b;
+                        diff = (symbolOffset > nextInstr) ? diff : -diff;
+                        bytecode_t value = Assembler::encodeLiteralToBytecode(diff);
+                        bytecode_t valueAddress = Assembler::parseBytecodeToAddress(value);
 
-                        //bytecodeStream << value << " " << addrModeCode << " F" << pc << " " << instrCode;
-                        descStream << "mem[" << reg << "+" << payload << "] \t# registry indirect with offset jump;" << std::endl;
+                        bytecodeStream << value << " " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                        descStream << "mem[" << ASM::Register[regCode] << "+0x" << valueAddress << "] (" << payload << ") \t# registry indirect with offset addressing;";
                     }
                     else
                     {
-                        // handle [reg + symbol], symbol in another section
-                        int orderID = Assembler::getSymbolOrderID(operand);
+                        // handle *[reg + symbol], symbol in another section
+                        int orderID = Assembler::getSymbolOrderID(payload);
                         bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
-                        Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
+                        Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
 
                         Assembler::RelocationTableRow_t relocRow = {
                             section,
@@ -1883,15 +1893,15 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                         };
                         Assembler::pushToRelocationTable(relocRow);
 
-                        //bytecodeStream << "00 00 " << addrModeCode << " F" << pc << " " << instrCode;
-                        descStream << "mem[" << reg << "+" << payload << "] \t# registry indirect with offset jump;" << std::endl;
-                        descStream << "\t" << relocOffset << ": " << relocType << "\t" << operand << "-0x0004;";
+                        bytecodeStream << "?? ?? " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                        descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset addressing via symbol offset from another section, waiting for linker to patch this memory space;" << std::endl;
+                        descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                     }
                 }
                 else
                 {
-                    // handle [reg + symbol], symbol is external
-                    int orderID = Assembler::insertExternalSymbol(operand);
+                    // handle *[reg + symbol], symbol is external
+                    int orderID = Assembler::insertExternalSymbol(payload);
                     int nextInstr = locCounter + instrDesc.altSize;
                     bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
                     Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
@@ -1905,8 +1915,8 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     };
                     Assembler::pushToRelocationTable(relocRow);
 
-                    //bytecodeStream << "?? ?? " << addrModeCode << " F" << pc << " " << instrCode;
-                    descStream << "mem[" << reg << "+" << payload << "] \t# registry indirect with offset jump;" << std::endl;
+                    bytecodeStream << "?? ?? " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                    descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset addressing via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
                     descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                 }
             }
@@ -1923,32 +1933,143 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     addrMode = ASM::AddrMode::REG_INDIR_W_OFF;
                     addrModeCode = ASM::AddrModeCode[addrMode];
 
-                    bytecodeStream << value << " " << addrModeCode << regBytecode << "F " << instrCode;
-                    descStream << "mem[" << reg << "+0x" << payloadBytecode << "] \t# registry indirect with offset jump;";
+                    bytecodeStream << value << " " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                    descStream << "mem[" << ASM::Register[regCode] << "+0x" << payloadBytecode << "] \t# registry indirect with offset addressing;";
                 }
                 catch (Assembler::ErrorCode code)
                 {
-                    Assembler::willThrowOnToken(operand);
-                    Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_JUMP_OPERAND);
+                    Assembler::willThrowOnToken(secondOp);
+                    Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_SECOND_OPERAND);
                 }
             }
         }
         else
         {
             // handle [reg]
-            token_t reg = operand.substr(1, operand.length() - 2);
+            token_t reg = secondOp.substr(1, secondOp.length() - 2);
 
             if (!Assembler::isValidRegisterReference(reg))
             {
-                Assembler::willThrowOnToken(operand);
+                Assembler::willThrowOnToken(secondOp);
                 Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_SECOND_OPERAND);
             }
 
-            ASM::Regs secondRegCode = Assembler::getRegisterCode(reg);
-            bytecode_t secondRegBytecode = ASM::RegCode[secondRegCode];
+            ASM::Regs regCode = Assembler::getRegisterCode(reg);
+            bytecode_t regBytecode = ASM::RegCode[regCode];
 
-            bytecodeStream << addrModeCode << " " << regBytecode << secondRegBytecode << " " << instrCode;
-            descStream << "mem[" << ASM::Register[secondRegCode] << "] \t # memory direct addressing;";
+            useAltSize = false;
+            addrMode = ASM::AddrMode::REG_INDIR;
+            addrModeCode = ASM::AddrModeCode[addrMode];
+
+            bytecodeStream << addrModeCode << " " << firstOpBytecode << regBytecode << " " << instrCode;
+            descStream << "mem[" << ASM::Register[regCode] << "] \t # registry indirect addressing;";
+        }
+    }
+    // handle <symbol|literal|reg>
+    else
+    {
+        // handle <reg>
+        if (Assembler::isValidRegisterReference(secondOp))
+        {
+            ASM::Regs secondRegCode = Assembler::getRegisterCode(secondOp);
+            bytecode_t secondOpBytecode = ASM::RegCode[secondRegCode];
+
+            useAltSize = false;
+            addrMode = ASM::AddrMode::REG_DIR;
+            addrModeCode = ASM::AddrModeCode[addrMode];
+
+            bytecodeStream << addrModeCode << firstOpBytecode << secondOpBytecode << " " << instrCode;
+            descStream << ASM::Register[secondRegCode] << " \t # registry direct addressing;";
+        }
+        // handle <symbol>
+        else if (Assembler::isValidSymbolName(secondOp))
+        {
+            useAltSize = true;
+            addrMode = ASM::AddrMode::MEM_DIR;
+            addrModeCode = ASM::AddrModeCode[addrMode];
+
+            if (Assembler::isSymbolDeclared(secondOp))
+            {
+                if (Assembler::isSymbolInSectionScope(secondOp, section))
+                {
+                    // handle <symbol>, symbol in section
+                    int symbolOffset = Assembler::getSymbolOffset(secondOp);
+                    int nextInstr = locCounter + instrDesc.altSize;
+
+                    // perform correct truncation down to 16bit for signed operands
+                    int diff_32b = (symbolOffset > nextInstr) ? symbolOffset - nextInstr : nextInstr - symbolOffset;
+                    ASM::word_t payload = diff_32b;
+                    payload = (symbolOffset > nextInstr) ? payload : -payload;
+                    bytecode_t value = Assembler::encodeLiteralToBytecode(payload);
+                    bytecode_t valueAddr = Assembler::parseBytecodeToAddress(value);
+
+                    bytecodeStream << value << " " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                    descStream << "mem[<%pc+0x" << valueAddr << ">] (" << secondOp << ") \t# memory direct addressing;";
+                }
+                else
+                {
+                    // handle <symbol>, symbol in another section
+                    int orderID = Assembler::getSymbolOrderID(secondOp);
+                    bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                    Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_ABS;
+
+                    Assembler::RelocationTableRow_t relocRow = {
+                        section,
+                        locCounter,
+                        relocType,
+                        orderID,
+                        0 /* */
+                    };
+                    Assembler::pushToRelocationTable(relocRow);
+
+                    bytecodeStream << "?? ?? " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                    descStream << "mem[0x????] (" << secondOp << ") \t# memory direct addressing via symbol in another section, waiting for linker to patch this memory space;" << std::endl;
+                    descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
+                }
+            }
+            else
+            {
+                // handle <symbol>, symbol is external
+                int orderID = Assembler::insertExternalSymbol(secondOp);
+                int nextInstr = locCounter + instrDesc.altSize;
+                bytecode_t relocOffset = Assembler::parseBytecodeToAddress(Assembler::encodeLiteralToBytecode(locCounter + 1));
+                Assembler::relocation_type_t relocType = Assembler::RelocationType::R_MOCK_CPU_PC16;
+
+                Assembler::RelocationTableRow_t relocRow = {
+                    section,
+                    locCounter,
+                    relocType,
+                    orderID,
+                    -nextInstr /* */
+                };
+                Assembler::pushToRelocationTable(relocRow);
+
+                bytecodeStream << "?? ?? " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                descStream << "mem[0x????] (" << secondOp << ") \t# mmeory direct addressing via external symbol, waiting for linker to patch this memory space;" << std::endl;
+                descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
+            }
+        }
+        // handle <literal>
+        else
+        {
+            useAltSize = true;
+            addrMode = ASM::AddrMode::MEM_DIR;
+            addrModeCode = ASM::AddrModeCode[addrMode];
+
+            try
+            {
+                ASM::word_t literal = Assembler::tryParseLiteral(secondOp, lineNumber);
+                bytecode_t value = Assembler::encodeLiteralToBytecode(literal);
+                bytecode_t valueAddr = Assembler::parseBytecodeToAddress(value);
+
+                bytecodeStream << value << " " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                descStream << "mem[0x" << valueAddr << "] # memory direct addressing;";
+            }
+            catch (Assembler::ErrorCode code)
+            {
+                Assembler::willThrowOnToken(secondOp);
+                Assembler::reportErrorAtLineAndThrow(lineNumber, Assembler::ErrorCode::INVALID_SECOND_OPERAND);
+            }
         }
     }
 
@@ -2216,6 +2337,7 @@ int main(int argc, char *argv[])
     DebugAssembler::debugTokenization(Program);
     DebugAssembler::debugSymbolTable();
     DebugAssembler::debugSectionTables();
+    DebugAssembler::debugRelocationTable();
 
     return 0;
 }
