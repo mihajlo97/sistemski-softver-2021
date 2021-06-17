@@ -717,7 +717,7 @@ void Assembler::initBytesWithZero(section_name_t &section, int byteCount)
         locCounter,
         byteCount,
         bytecode,
-        "Unused bytes initialized to 0 with .skip directive." /* */
+        "# Unused bytes initialized to 0 with .skip directive;" /* */
     };
     Assembler::insertIntoSectionTable(section, row);
 }
@@ -753,7 +753,7 @@ void Assembler::insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal,
 
     std::string desc;
     std::stringstream converter;
-    converter << "Local named literal " << symbol << " = " << literal;
+    converter << "# Local named literal " << symbol << " = " << literal << ";";
     desc = converter.str();
 
     Assembler::SectionTableRow_t sectionRow = {
@@ -842,7 +842,7 @@ void Assembler::initBytesWithLiteral(Assembler::token_t &token, Assembler::secti
 
     int locCounter = Assembler::getSectionLocationCounter(section);
     std::stringstream stream;
-    stream << "Initialized directly with .word directive to value " << literal;
+    stream << "# Initialized directly with .word directive to value " << literal << ";";
 
     Assembler::SectionTableRow_t row = {
         locCounter,
@@ -866,7 +866,7 @@ void Assembler::initBytesWithSymbol(Assembler::token_t &token, Assembler::sectio
     if (!Assembler::isSymbolDeclared(token))
     {
         sectionRow.bytecode = "?? ??";
-        sectionRow.description = ".word symbol initialization with an external symbol, awaiting linker to patch this memory space.";
+        sectionRow.description = "# .word symbol initialization with an external symbol, awaiting linker to patch this memory space;";
     }
     else
     {
@@ -876,7 +876,7 @@ void Assembler::initBytesWithSymbol(Assembler::token_t &token, Assembler::sectio
         sectionRow.bytecode = Assembler::encodeLiteralToBytecode(literal);
 
         std::stringstream stream;
-        stream << ".word initialization via symbol " << token << " with value " << literal << ".";
+        stream << "# .word initialization via symbol " << token << " with value " << literal << ".";
         sectionRow.description = stream.str();
     }
 
@@ -1426,7 +1426,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
                 Assembler::pushToRelocationTable(relocRow);
 
                 bytecodeStream << "?? ?? " << addrModeCode << " F" << pc << " " << instrCode;
-                descStream << "<%pc+0x????> (" << operand << ") \t# pc relative jump via symbol offset in another section, waiting for linker to patch this memory space;" << std::endl;
+                descStream << "<%pc+0x??\?\?> (" << operand << ") \t# pc relative jump via symbol offset in another section, waiting for linker to patch this memory space;" << std::endl;
                 descStream << "\t" << relocOffset << ": " << relocType << "\t" << operand << "-0x0004;";
             }
         }
@@ -1448,7 +1448,7 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
             Assembler::pushToRelocationTable(relocRow);
 
             bytecodeStream << "?? ?? " << addrModeCode << " F" << pc << " " << instrCode;
-            descStream << "<%pc+0x????> (" << operand << ") \t# pc relative jump via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
+            descStream << "<%pc+0x??\?\?> (" << operand << ") \t# pc relative jump via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
             descStream << "\t" << relocOffset << ": " << relocType << "\t" << operand << "-0x0004;";
         }
     }
@@ -1552,40 +1552,6 @@ void Assembler::processJumpInstruction(ASM::Instr instr, Assembler::token_contai
     Assembler::insertIntoSectionTable(section, row);
 }
 
-void Assembler::DEFUNCT_processJumpInstruction(ASM::Instr instr, Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
-{
-    int locCounter = Assembler::getSectionLocationCounter(section);
-    bool useAltSize = false;
-    Assembler::token_t operand = tokens[1 + labelOffset];
-    std::stringstream bytecodeStream, descStream;
-
-    ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
-    ASM::AddrMode addrMode = Assembler::determineJumpAddrMode(operand);
-
-    switch (addrMode)
-    {
-
-    default:
-
-        break;
-    }
-
-    //bytecode_t pc = ASM::RegCode[ASM::Regs::PC];
-    //ASM::AddrMode addrMode;
-    //bytecode_t addrModeCode;
-    //bytecode_t instrCode = ASM::InstrCode[instr];
-    //std::stringstream bytecodeStream, descStream;
-    //descStream << ASM::Instruction[instr] << " ";
-
-    Assembler::SectionTableRow_t row = {
-        locCounter,
-        (useAltSize) ? instrDesc.altSize : instrDesc.size,
-        bytecodeStream.str(),
-        descStream.str() /* */
-    };
-    Assembler::insertIntoSectionTable(section, row);
-}
-
 void Assembler::processPushPop(ASM::Instr instr, Assembler::token_container_t &tokens, int labelOffset, int lineNumber, Assembler::section_name_t &section)
 {
     // transpile into valid instructions:
@@ -1594,7 +1560,7 @@ void Assembler::processPushPop(ASM::Instr instr, Assembler::token_container_t &t
 
     int locCounter = Assembler::getSectionLocationCounter(section);
 
-    bytecode_t instrCode = ASM::InstrCode[instr];
+    bytecode_t instrCode = ASM::InstrCode[(instr == ASM::Instr::PUSH) ? ASM::Instr::STR : ASM::Instr::LDR];
     ASM::InstrDescTable_t instrDesc = ASM::InstructionDescTable[instr];
     Assembler::token_t operand = tokens[1 + labelOffset];
     ASM::Regs sp = ASM::Regs::SP;
@@ -1606,16 +1572,18 @@ void Assembler::processPushPop(ASM::Instr instr, Assembler::token_container_t &t
 
     ASM::Regs reg = Assembler::getRegisterCode(operand);
 
+    //std::cout << "\n\nDEBUG: " << instr << ", " << instrCode << "\n\n";
+
     if (instr == ASM::Instr::PUSH)
     {
         addrMode = ASM::AddrMode::REG_INDIR_DEC_BEFORE;
-        bytecodeStream << addrMode << " " << ASM::RegCode[reg] << ASM::RegCode[sp] << " " << instrCode;
+        bytecodeStream << ASM::AddrModeCode[addrMode] << " " << ASM::RegCode[reg] << ASM::RegCode[sp] << " " << instrCode;
         descStream << ASM::Instruction[instr] << " " << ASM::Register[reg];
     }
     else if (instr == ASM::Instr::POP)
     {
         addrMode = ASM::AddrMode::REG_INDIR_INC_AFTER;
-        bytecodeStream << addrMode << " " << ASM::RegCode[reg] << ASM::RegCode[sp] << " " << instrCode;
+        bytecodeStream << ASM::AddrModeCode[addrMode] << " " << ASM::RegCode[reg] << ASM::RegCode[sp] << " " << instrCode;
         descStream << ASM::Instruction[instr] << " " << ASM::Register[reg];
     }
     else
@@ -1799,7 +1767,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 Assembler::pushToRelocationTable(relocRow);
 
                 bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
-                descStream << "mem[<%pc+0x????>] (" << secondOp << ") \t# pc relative memory access via symbol offset in another section, waiting for linker to patch this memory space;" << std::endl;
+                descStream << "mem[<%pc+0x??\?\?>] (" << secondOp << ") \t# pc relative memory access via symbol offset in another section, waiting for linker to patch this memory space;" << std::endl;
                 descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
             }
         }
@@ -1821,7 +1789,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
             Assembler::pushToRelocationTable(relocRow);
 
             bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
-            descStream << "mem[<%pc+0x????>] (" << secondOp << ") \t# pc relative memory access via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
+            descStream << "mem[<%pc+0x??\?\?>] (" << secondOp << ") \t# pc relative memory access via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
             descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
         }
     }
@@ -1874,7 +1842,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                         bytecode_t value = Assembler::encodeLiteralToBytecode(diff);
                         bytecode_t valueAddress = Assembler::parseBytecodeToAddress(value);
 
-                        bytecodeStream << value << " " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                        bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
                         descStream << "mem[" << ASM::Register[regCode] << "+0x" << valueAddress << "] (" << payload << ") \t# registry indirect with offset addressing;";
                     }
                     else
@@ -1893,7 +1861,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                         };
                         Assembler::pushToRelocationTable(relocRow);
 
-                        bytecodeStream << "?? ?? " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                        bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
                         descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset addressing via symbol offset from another section, waiting for linker to patch this memory space;" << std::endl;
                         descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                     }
@@ -1915,7 +1883,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     };
                     Assembler::pushToRelocationTable(relocRow);
 
-                    bytecodeStream << "?? ?? " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                    bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
                     descStream << "mem[" << ASM::Register[regCode] << "+0x????] (" << payload << ") \t# registry indirect with offset addressing via external symbol offset, waiting for linker to patch this memory space;" << std::endl;
                     descStream << "\t" << relocOffset << ": " << relocType << "\t" << payload << "-0x0004;";
                 }
@@ -1933,7 +1901,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     addrMode = ASM::AddrMode::REG_INDIR_W_OFF;
                     addrModeCode = ASM::AddrModeCode[addrMode];
 
-                    bytecodeStream << value << " " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                    bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
                     descStream << "mem[" << ASM::Register[regCode] << "+0x" << payloadBytecode << "] \t# registry indirect with offset addressing;";
                 }
                 catch (Assembler::ErrorCode code)
@@ -1978,7 +1946,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
             addrMode = ASM::AddrMode::REG_DIR;
             addrModeCode = ASM::AddrModeCode[addrMode];
 
-            bytecodeStream << addrModeCode << firstOpBytecode << secondOpBytecode << " " << instrCode;
+            bytecodeStream << addrModeCode << " " << firstOpBytecode << secondOpBytecode << " " << instrCode;
             descStream << ASM::Register[secondRegCode] << " \t # registry direct addressing;";
         }
         // handle <symbol>
@@ -2003,7 +1971,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     bytecode_t value = Assembler::encodeLiteralToBytecode(payload);
                     bytecode_t valueAddr = Assembler::parseBytecodeToAddress(value);
 
-                    bytecodeStream << value << " " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                    bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
                     descStream << "mem[<%pc+0x" << valueAddr << ">] (" << secondOp << ") \t# memory direct addressing;";
                 }
                 else
@@ -2022,7 +1990,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                     };
                     Assembler::pushToRelocationTable(relocRow);
 
-                    bytecodeStream << "?? ?? " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                    bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
                     descStream << "mem[0x????] (" << secondOp << ") \t# memory direct addressing via symbol in another section, waiting for linker to patch this memory space;" << std::endl;
                     descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
                 }
@@ -2044,7 +2012,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 };
                 Assembler::pushToRelocationTable(relocRow);
 
-                bytecodeStream << "?? ?? " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                bytecodeStream << "?? ?? " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
                 descStream << "mem[0x????] (" << secondOp << ") \t# mmeory direct addressing via external symbol, waiting for linker to patch this memory space;" << std::endl;
                 descStream << "\t" << relocOffset << ": " << relocType << "\t" << secondOp << "-0x0004;";
             }
@@ -2062,7 +2030,7 @@ void Assembler::processLoadStore(ASM::Instr instr, Assembler::token_container_t 
                 bytecode_t value = Assembler::encodeLiteralToBytecode(literal);
                 bytecode_t valueAddr = Assembler::parseBytecodeToAddress(value);
 
-                bytecodeStream << value << " " << addrModeCode << firstOpBytecode << "F " << instrCode;
+                bytecodeStream << value << " " << addrModeCode << " " << firstOpBytecode << "F " << instrCode;
                 descStream << "mem[0x" << valueAddr << "] # memory direct addressing;";
             }
             catch (Assembler::ErrorCode code)
@@ -2135,13 +2103,41 @@ void Assembler::processInstruction(token_container_t &tokens, int labelOffset, i
     }
 }
 
+/* assembler output */
+void Assembler::outputAssembledFile(std::ofstream &outputFile)
+{
+    ASM::word_t addrCounter = 0;
+    bytecode_t addrCounterFormatted;
+
+    if (outputFile.is_open())
+    {
+        for (auto &section : Assembler::SectionTables)
+        {
+            addrCounterFormatted = Assembler::encodeLiteralToBytecode(addrCounter);
+            outputFile << Assembler::parseBytecodeToAddress(addrCounterFormatted) << " <" << section.first << ">:" << std::endl;
+
+            for (auto &row : section.second.row)
+            {
+                addrCounterFormatted = Assembler::encodeLiteralToBytecode(addrCounter);
+                outputFile << Assembler::parseBytecodeToAddress(addrCounterFormatted) << ": " << row.bytecode << '\t' << '\t' << row.description << std::endl;
+                addrCounter += (ASM::word_t)row.size;
+            }
+
+            outputFile << std::endl;
+        }
+    }
+    else
+    {
+        Assembler::reportErrorAndExit(Assembler::ErrorCode::WRITE_FAILED);
+    }
+}
+
 int main(int argc, char *argv[])
 {
     Assembler::assertCorrectProgramCall(argc, argv);
 
-    /* refrences to resource files */
+    /* refrences to input resource files */
     std::string inputFilePath((argc == 2) ? argv[1] : argv[3]);
-    std::string outputFilePath((argc == 4) ? argv[2] : "");
     std::ifstream sourceProgram(inputFilePath);
 
     /* parsing lines from source file */
@@ -2276,7 +2272,6 @@ int main(int argc, char *argv[])
         sourceProgram.close();
         Assembler::reportErrorAndExit(code);
     }
-
     sourceProgram.close();
     Assembler::resetSectionLocationCounters();
 
@@ -2333,8 +2328,23 @@ int main(int argc, char *argv[])
         Assembler::reportErrorAndExit(code);
     }
 
+    /* output assembled file */
+    std::stringstream outPathDefault;
+    outPathDefault << "." << (inputFilePath.substr(inputFilePath.find_last_of('/'), inputFilePath.find_last_of('.') - inputFilePath.find_last_of('/'))) << ".txt";
+    std::string outputFilePath = (argc == 2)
+                                     ? outPathDefault.str()
+                                     : argv[2];
+    std::ofstream assembledObjectFile(outputFilePath);
+
+    std::cout << "Assembling output..." << std::endl;
+    Assembler::outputAssembledFile(assembledObjectFile);
+    std::cout << "Assembling finished. Open file " << outputFilePath << " for the text representation of the assembled object file." << std::endl;
+
     /* DEBUG */
-    DebugAssembler::debugTokenization(Program);
+    std::cout << std::endl
+              << "<<<ASSEMBLER_DEBUG_DUMP>>>" << std::endl
+              << std::endl;
+    //DebugAssembler::debugTokenization(Program);
     DebugAssembler::debugSymbolTable();
     DebugAssembler::debugSectionTables();
     DebugAssembler::debugRelocationTable();
