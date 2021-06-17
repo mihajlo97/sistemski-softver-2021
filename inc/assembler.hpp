@@ -371,6 +371,8 @@ namespace Assembler
     typedef std::string token_t;
     typedef std::string section_name_t;
     typedef std::string symbol_name_t;
+    typedef std::string relocation_type_t;
+    typedef std::string operand_t;
     typedef std::vector<std::string> token_container_t;
 
     /* 
@@ -393,7 +395,10 @@ namespace Assembler
         REDECLARED_EXTERN,
         UNDECLARED_GLOBAL,
         NO_END_DIRECTIVE,
-        NOT_ALL_REG /* */
+        NOT_ALL_REG,
+        INVALID_JUMP_OPERAND,
+        INVALID_FIRST_OPERAND,
+        INVALID_SECOND_OPERAND /* */
     };
 
     enum WarningCode
@@ -417,7 +422,10 @@ namespace Assembler
         "Error: Cannot redeclare an external symbol.",
         "Error: Cannot declare symbol as global. Symbol declaration missing.",
         "Error: Program must contain a .end directive.",
-        "Error: All instruction operands must be register (r0..r7, pc, sp, psw) references." /* */
+        "Error: All instruction operands must be register (r0..r7, pc, sp, psw) references.",
+        "Error: Operand is not a valid jump address.",
+        "Error: First operand of this instruction must be a valid register reference.",
+        "Error: Syntax error in second operand." /* */
     };
 
     std::string WarningMessages[] = {
@@ -425,9 +433,9 @@ namespace Assembler
         "Warning: Lines declared after the .end directive will be ignored." /* */
     };
 
-    void assertCorrectProgramCall(int argc, char *argv[]);          /* check if user called program incorrectly */
-    void reportWarning(int lineNumber, WarningCode code);           /* issue warning to user during assembling */
-    void reportErrorAndExit(ErrorCode code);                        /* report error message and exit with error code */
+    void assertCorrectProgramCall(int argc, char *argv[]);          /* checks if the user called the program incorrectly */
+    void reportWarning(int lineNumber, WarningCode code);           /* issues a warning to the user during assembling */
+    void reportErrorAndExit(ErrorCode code);                        /* reports an error message and exits with error code */
     void reportErrorAtLineAndThrow(int lineNumber, ErrorCode code); /* reports at which line in the source file the error occurred and exits */
     void willThrowOnToken(token_t &token);                          /* reports which token caused an exception throw */
 
@@ -455,19 +463,20 @@ namespace Assembler
     void removeCommentsFromLine(std::string &line);                                     /* removes characters after the '#' symbol */
     void trimLine(std::string &line);                                                   /* removes leading and trailing whitespace in the line */
     void tokenizeLine(std::string &line, int lineNumber, token_container_t &container); /* splits the current line into tokens */
-    bool isLabelDeclaredAt(token_container_t &tokens, int tokenIndex);                  /* check if firs token in line is a label token */
+    bool isLabelDeclaredAt(token_container_t &tokens, int tokenIndex);                  /* checks if the first token in the line contains a label */
 
     /* 
         Parse tokens and literals.
     */
 
-    void tokenToLowerCase(token_t &token);                          /* converts characters in the token to lowercase */
-    ASM::Instr isValidInstruction(token_t &token);                  /* checks if token holds a valid assembly instruction and returns its ID */
-    bool isValidRegisterReference(token_t &token);                  /* checks if token holds a valid reference to CPU register */
-    bool isIndirectRegisterAddrReference(token_t &token);           /* checks if token holds a registry indirect addressing reference */
-    bool isValidSymbolName(token_t &token);                         /* checks if token holds a valid symbol name */
-    ASM::word_t assertParseLiteral(token_t &token, int lineNumber); /* checks if token holds a valid literal and returns its decimal value */
-    bool isDirectiveDeclaration(token_t &token);                    /* checks if token holds a section directive declaration */
+    void tokenToLowerCase(token_t &token);                       /* converts characters in the token to lowercase */
+    ASM::Instr isValidInstruction(token_t &token);               /* checks if token holds a valid assembly instruction and returns its ID */
+    bool isValidRegisterReference(token_t &token);               /* checks if token holds a valid reference to CPU register */
+    bool isIndirectRegisterAddrReference(token_t &token);        /* checks if token holds a registry indirect addressing reference */
+    bool isValidSymbolName(token_t &token);                      /* checks if token holds a valid symbol name */
+    ASM::word_t tryParseLiteral(token_t &token, int lineNumber); /* tries to parse a valid literal and returns its bit representation, otherwise throws an exception */
+    bool isDirectiveDeclaration(token_t &token);                 /* checks if token holds a section directive declaration */
+    ASM::Regs getRegisterCode(token_t &token);                   /* returns the reg code of the register reference inside the token */
 
     /* 
         Assembler semantic operations.
@@ -488,6 +497,12 @@ namespace Assembler
     void assertSectionPreviouslyDeclared(section_name_t &section, int lineNumber);                                /* asserts that a .section has been declared prior to this line, otherwise throws an exception */
     int calcInstrOperandCountFromLine(token_container_t &tokens, int labelOffset);                                /* calculates the number of operands used in the instruction call */
     ASM::Regs assertValidRegisterReference(token_t &token, int lineNumber);                                       /* asserts that token holds a valid register reference, otherwise throws an exception */
+    void promoteSymbolToGlobal(symbol_name_t &symbol);                                                            /* labels the symbol as global inside the symbol table */
+    bool isSymbolInSectionScope(symbol_name_t &symbol, section_name_t &section);                                  /* checks if the provided symbol is declared in the provided section */
+    bool isSymbolDeclared(symbol_name_t &symbol);                                                                 /* checks if symbol is already present in the symbol table */
+    int getSymbolOffset(symbol_name_t &symbol);                                                                   /* returns the offset field for the given symbol */
+    int getSymbolOrderID(symbol_name_t &symbol);                                                                  /* returns the orderID field for the given symbol */
+    bytecode_t parseBytecodeToAddress(bytecode_t bytecode);                                                       /* returns a valid address parsed from the bytecode */
 
     /*
         Assembler data structures and internal assembler operations.
@@ -495,10 +510,24 @@ namespace Assembler
 
     struct Section
     {
-        static section_name_t NO_SECTION, ABSOLUTE;
+        static section_name_t NO_SECTION, ABSOLUTE, EXTERNAL;
     };
     section_name_t Section::NO_SECTION = "_NO_SECTION_";
     section_name_t Section::ABSOLUTE = "_ABSOLUTE_";
+    section_name_t Section::EXTERNAL = "_EXTERNAL_";
+
+    struct Offset
+    {
+        static int UNKNOWN;
+    };
+    int Offset::UNKNOWN = std::numeric_limits<int>::min();
+
+    struct RelocationType
+    {
+        static relocation_type_t R_MOCK_CPU_PC16, R_MOCK_CPU_ABS;
+    };
+    relocation_type_t RelocationType::R_MOCK_CPU_PC16 = "R_MOCK_CPU_PC16";
+    relocation_type_t RelocationType::R_MOCK_CPU_ABS = "R_MOCK_CPU_ABS";
 
     typedef struct SymbolTableRow
     {
@@ -515,6 +544,15 @@ namespace Assembler
         }
     } SymbolTableRow_t;
     int Assembler::SymbolTableRow::ORDER_COUNTER = 0;
+
+    typedef struct RelocationTableRow
+    {
+        section_name_t section;
+        int offset;
+        relocation_type_t relocationType;
+        int orderID;
+        int patchOffset;
+    } RelocationTableRow_t;
 
     typedef struct SectionTableRow
     {
@@ -541,6 +579,7 @@ namespace Assembler
 
     std::map<symbol_name_t, SymbolTableRow_t> SymbolTable;
     std::map<section_name_t, SectionTable_t> SectionTables;
+    std::vector<RelocationTableRow_t> RelocationTable;
 
     void assertInputFileExists(std::ifstream &file);
     void initializeAssemblerTables();                                                         /* inserts default values inside the assembler tables */
@@ -550,8 +589,9 @@ namespace Assembler
     void assertSymbolUndeclared(symbol_name_t &symbol, int lineNumber);                       /* will throw an error if the symbol has been already declared */
     void pushToSymbolTable(symbol_table_row_pair_t row);                                      /* inserts symbol into symbol table with its associated data */
     void insertAbsoluteSymbol(symbol_name_t &symbol, ASM::word_t literal, int lineNumber);    /* inserts symbol with its initial value into the absolute section and returns operation success */
-    void insertSection(section_name_t &section, int lineNumber);                              /* insert section name into symbol table */
-    void insertLabel(symbol_name_t &label, section_name_t &section, int lineNumber);          /* insert label into symbol table */
+    void insertSection(section_name_t &section, int lineNumber);                              /* inserts the section name into the symbol table */
+    void insertLabel(symbol_name_t &label, section_name_t &section, int lineNumber);          /* inserts a label into the symbol table */
+    int insertExternalSymbol(symbol_name_t &symbol);                                          /* inserts an externally declared symbol into the symbol table */
     int prepareForNextLine(token_container_t &tokens, int lineCounter);                       /* clears the tokens and increments the line number counter */
     void storeLine(lines_t &program, token_container_t &tokens, int lineNumber, LineTag tag); /* stores line data into run memory */
     void patchLineTag(lines_t &program, LineTag tag);                                         /* patches the last pushed line with the correct tag */
@@ -560,6 +600,7 @@ namespace Assembler
     void initBytesWithSymbol(token_t &token, section_name_t &section, int lineNumber);        /* initializes section content with the value the symbol holds */
     int getSectionLocationCounter(section_name_t &section);                                   /* returns the location counter for the passed section */
     void insertIntoSectionTable(section_name_t &section, SectionTableRow_t row);              /* inserts the passed row into the appropriate section table */
+    void pushToRelocationTable(RelocationTableRow_t row);                                     /* pushes the specified row to the relocation table */
 
     /* second pass directive processing */
     void processDirective(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);        /* wraps directive declaration processing */
@@ -569,11 +610,20 @@ namespace Assembler
     bool endDirectiveDetected(token_container_t &tokens, int labelOffset, int lineNumber);                             /* detects if an .end directive is present in the tokens */
     void assertProgramHasEnd(bool endDirectiveDetected, int lineNumber);                                               /* asserts that an .end directive has been declared in the program, otherwise throws an error */
     void processWordDirective(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);    /* processes the .word directive */
+    void processSkipDirective(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);    /* processes the .skip directive */
+
+    /* second pass operand processing */
+    ASM::AddrMode determineJumpAddrMode(operand_t &operand); /* returns the correct addressing mode based on the operand syntax */
 
     /* second pass instruction processing */
-    void processHaltInstruction(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section); /* process the halt instruction */
-    void processIntInstruction(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);  /* process the int instruction*/
-    void processInstruction(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);                       /* wraps instruction declaration processing */
+    void processSingleByteInstruction(ASM::Instr instr, section_name_t &section);                                                                   /* processes instructions without any operands */
+    void processSingleRegOperandInstruction(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section); /* processes instructions with a single reg operand */
+    void processDoubleRegOperandInstruction(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section); /* processes instructions with two reg operands*/
+    void processJumpInstruction(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);             /* DEPRECATED!! */
+    void DEFUNCT_processJumpInstruction(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);     /* processes instructions that perform jumps */
+    void processPushPop(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);                     /* processes the push and pop instructions */
+    void processLoadStore(ASM::Instr instr, token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);                   /* processes the ldr and str instructions */
+    void processInstruction(token_container_t &tokens, int labelOffset, int lineNumber, section_name_t &section);                                   /* wraps instruction declaration processing */
 
 }
 
